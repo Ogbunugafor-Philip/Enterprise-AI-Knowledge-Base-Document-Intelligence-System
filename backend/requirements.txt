@@ -6,7 +6,7 @@ psycopg2-binary
 asyncpg
 python-jose
 passlib
-bcrypt
+bcrypt<4
 python-multipart
 celery
 redis

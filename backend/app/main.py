@@ -13,6 +13,9 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.auth import router as auth_router
+from app.middleware.auth_middleware import JWTAuthenticationMiddleware, PasswordExpiryMiddleware
+
 logger = logging.getLogger("ent_rag")
 
 api_router = APIRouter(prefix="/api")
@@ -60,8 +63,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(PasswordExpiryMiddleware)
+app.add_middleware(JWTAuthenticationMiddleware)
 
 app.include_router(api_router)
+app.include_router(auth_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["root"])
