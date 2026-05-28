@@ -1,151 +1,158 @@
 import React from "react";
-import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, Link } from "react-router-dom";
+
+import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import { ErrorBoundary } from "./utils/errorBoundary.jsx";
-import { Building2, ShieldCheck, UserRoundCog } from "lucide-react";
-import DataRetentionSettings from "./components/DataRetentionSettings.jsx";
-import HelpSection from "./components/HelpSection.jsx";
-import AdminDashboard from "./pages/AdminDashboard.jsx";
-import AITrustReport from "./pages/AITrustReport.jsx";
-import AuditLogs from "./pages/AuditLogs.jsx";
-import BackupManagement from "./pages/BackupManagement.jsx";
-import AlertsPanel from "./pages/AlertsPanel.jsx";
-import ApprovalQueue from "./pages/ApprovalQueue.jsx";
-import DebuggingAssistant from "./pages/DebuggingAssistant.jsx";
-import MonitoringDashboard from "./pages/MonitoringDashboard.jsx";
-import SecurityDashboard from "./pages/SecurityDashboard.jsx";
-import ChatHistory from "./pages/ChatHistory.jsx";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
+
+// Pages
+import Login from "./pages/Login.jsx";
+import UserDashboard from "./pages/UserDashboard.jsx";
 import ChatInterface from "./pages/ChatInterface.jsx";
-import ComplianceReports from "./pages/ComplianceReports.jsx";
+import ChatHistory from "./pages/ChatHistory.jsx";
+import AdminDashboard from "./pages/AdminDashboard.jsx";
 import DocumentManagement from "./pages/DocumentManagement.jsx";
 import DocumentVersions from "./pages/DocumentVersions.jsx";
+import ApprovalQueue from "./pages/ApprovalQueue.jsx";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
-import UserDashboard from "./pages/UserDashboard.jsx";
 import UserManagement from "./pages/UserManagement.jsx";
+import MonitoringDashboard from "./pages/MonitoringDashboard.jsx";
+import AlertsPanel from "./pages/AlertsPanel.jsx";
+import DebuggingAssistant from "./pages/DebuggingAssistant.jsx";
+import AITrustReport from "./pages/AITrustReport.jsx";
+import AuditLogs from "./pages/AuditLogs.jsx";
+import ComplianceReports from "./pages/ComplianceReports.jsx";
+import SecurityDashboard from "./pages/SecurityDashboard.jsx";
+import BackupManagement from "./pages/BackupManagement.jsx";
 
-function WorkspaceCard({ icon: Icon, title, description, to }) {
-  return (
-    <Link
-      to={to}
-      className="rounded border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-400"
-    >
-      <Icon className="mb-4 h-6 w-6 text-slate-700" aria-hidden="true" />
-      <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
-    </Link>
-  );
-}
+// Components
+import DataRetentionSettings from "./components/DataRetentionSettings.jsx";
+import HelpSection from "./components/HelpSection.jsx";
 
-function Layout({ children }) {
+// ─── Unauthorized page ───────────────────────────────────────────────────────
+
+function Unauthorized() {
+  const { logout, role } = useAuth();
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link to="/" className="text-base font-semibold">
-            Ent_RAG
-          </Link>
-          <nav className="flex gap-4 text-sm text-slate-600">
-            <Link className="hover:text-slate-950" to="/user">User</Link>
-            <Link className="hover:text-slate-950" to="/admin">Admin</Link>
-            <Link className="hover:text-slate-950" to="/super-admin">Super Admin</Link>
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-50 text-slate-900">
+      <h1 className="text-2xl font-semibold">Access Denied</h1>
+      <p className="text-slate-500">You don't have permission to view this page (role: {role || "none"}).</p>
+      <div className="flex gap-3">
+        <button onClick={() => window.history.back()} className="rounded border px-4 py-2 text-sm">Go back</button>
+        <button onClick={logout} className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Sign out</button>
+      </div>
     </div>
   );
 }
 
-function Home() {
-  return (
-    <Layout>
-      <section className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-normal">Enterprise AI Knowledge Base</h1>
-        <p className="mt-3 max-w-3xl text-slate-600">
-          A multi-tenant document intelligence platform for secure ingestion,
-          retrieval, administration, and monitoring.
-        </p>
-      </section>
-      <section className="grid gap-4 md:grid-cols-3">
-        <WorkspaceCard
-          icon={Building2}
-          title="User Workspace"
-          description="Search approved knowledge sources, inspect document answers, and manage personal activity."
-          to="/user"
-        />
-        <WorkspaceCard
-          icon={UserRoundCog}
-          title="Admin Workspace"
-          description="Manage organization users, departments, document ingestion, and access controls."
-          to="/admin"
-        />
-        <WorkspaceCard
-          icon={ShieldCheck}
-          title="Super Admin Workspace"
-          description="Oversee tenants, platform health, compliance controls, and global monitoring."
-          to="/super-admin"
-        />
-      </section>
-    </Layout>
-  );
+// ─── Root redirect based on role ─────────────────────────────────────────────
+
+function RootRedirect() {
+  const { isAuthenticated, role } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (role === "SUPER_ADMIN") return <Navigate to="/superadmin/dashboard" replace />;
+  if (role === "ADMIN") return <Navigate to="/admin/dashboard" replace />;
+  return <Navigate to="/dashboard" replace />;
 }
 
-function Workspace({ title, description }) {
-  return (
-    <Layout>
-      <h1 className="text-2xl font-semibold">{title}</h1>
-      <p className="mt-3 max-w-3xl text-slate-600">{description}</p>
-      <div className="mt-6 rounded border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
-        Workspace implementation placeholder for Phase 2.
-      </div>
-    </Layout>
-  );
-}
+// ─── Routes ──────────────────────────────────────────────────────────────────
 
-function App() {
+function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/dashboard" element={<UserDashboard />} />
-      <Route path="/chat" element={<ChatInterface />} />
-      <Route path="/chat/:sessionId" element={<ChatInterface />} />
-      <Route path="/history" element={<ChatHistory />} />
-      <Route path="/help" element={<HelpSection />} />
-      <Route path="/admin/dashboard" element={<AdminDashboard />} />
-      <Route path="/admin/approvals" element={<ApprovalQueue />} />
-      <Route path="/admin/documents" element={<DocumentManagement />} />
-      <Route path="/admin/documents/:documentId/versions" element={<DocumentVersions />} />
-      <Route
-        path="/user"
-        element={<Workspace title="User Workspace" description="Tenant-scoped knowledge retrieval and document intelligence." />}
-      />
-      <Route
-        path="/admin"
-        element={<Workspace title="Admin Workspace" description="Organization-level controls for documents, users, and departments." />}
-      />
-      <Route path="/monitoring" element={<MonitoringDashboard />} />
-      <Route path="/monitoring/alerts" element={<AlertsPanel />} />
-      <Route path="/monitoring/debugging" element={<DebuggingAssistant />} />
-      <Route path="/monitoring/ai-trust" element={<AITrustReport />} />
-      <Route path="/compliance/audit-logs" element={<AuditLogs />} />
-      <Route path="/compliance/reports" element={<ComplianceReports />} />
-      <Route path="/compliance/retention" element={<DataRetentionSettings />} />
-      <Route path="/security" element={<SecurityDashboard />} />
-      <Route path="/backup" element={<BackupManagement />} />
-      <Route path="/superadmin/dashboard" element={<SuperAdminDashboard />} />
-      <Route path="/superadmin/users" element={<UserManagement />} />
-      <Route
-        path="/super-admin"
-        element={<Workspace title="Super Admin Workspace" description="Platform-wide tenant operations, security, and monitoring." />}
-      />
+      {/* Public */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/unauthorized" element={<Unauthorized />} />
+
+      {/* Root — redirect based on role */}
+      <Route path="/" element={<RootRedirect />} />
+
+      {/* ── User routes ── */}
+      <Route path="/dashboard" element={
+        <ProtectedRoute><UserDashboard /></ProtectedRoute>
+      } />
+      <Route path="/chat" element={
+        <ProtectedRoute><ChatInterface /></ProtectedRoute>
+      } />
+      <Route path="/chat/:sessionId" element={
+        <ProtectedRoute><ChatInterface /></ProtectedRoute>
+      } />
+      <Route path="/history" element={
+        <ProtectedRoute><ChatHistory /></ProtectedRoute>
+      } />
+      <Route path="/help" element={
+        <ProtectedRoute><HelpSection /></ProtectedRoute>
+      } />
+
+      {/* ── Admin routes ── */}
+      <Route path="/admin/dashboard" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><AdminDashboard /></ProtectedRoute>
+      } />
+      <Route path="/admin/documents" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><DocumentManagement /></ProtectedRoute>
+      } />
+      <Route path="/admin/documents/:documentId/versions" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><DocumentVersions /></ProtectedRoute>
+      } />
+      <Route path="/admin/approvals" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><ApprovalQueue /></ProtectedRoute>
+      } />
+
+      {/* ── Super Admin routes ── */}
+      <Route path="/superadmin/dashboard" element={
+        <ProtectedRoute allowedRoles={["SUPER_ADMIN"]}><SuperAdminDashboard /></ProtectedRoute>
+      } />
+      <Route path="/superadmin/users" element={
+        <ProtectedRoute allowedRoles={["SUPER_ADMIN"]}><UserManagement /></ProtectedRoute>
+      } />
+
+      {/* ── Monitoring routes ── */}
+      <Route path="/monitoring" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><MonitoringDashboard /></ProtectedRoute>
+      } />
+      <Route path="/monitoring/alerts" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><AlertsPanel /></ProtectedRoute>
+      } />
+      <Route path="/monitoring/debugging" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><DebuggingAssistant /></ProtectedRoute>
+      } />
+      <Route path="/monitoring/ai-trust" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><AITrustReport /></ProtectedRoute>
+      } />
+
+      {/* ── Compliance routes ── */}
+      <Route path="/compliance/audit-logs" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><AuditLogs /></ProtectedRoute>
+      } />
+      <Route path="/compliance/reports" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><ComplianceReports /></ProtectedRoute>
+      } />
+      <Route path="/compliance/retention" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><DataRetentionSettings /></ProtectedRoute>
+      } />
+
+      {/* ── Security & Backup ── */}
+      <Route path="/security" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><SecurityDashboard /></ProtectedRoute>
+      } />
+      <Route path="/backup" element={
+        <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}><BackupManagement /></ProtectedRoute>
+      } />
+
+      {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
 
-export default function AppWithErrorBoundary() {
+// ─── Root export ─────────────────────────────────────────────────────────────
+
+export default function App() {
   return (
     <ErrorBoundary>
-      <App />
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </ErrorBoundary>
   );
 }
