@@ -147,9 +147,9 @@ async def create_user(
         send_welcome_email=payload.send_welcome_email,
         created_by_user_id=current_user.id,
     )
+    response = user_management_service._user_create_response(user)
     await db.commit()
-    await db.refresh(user)
-    return user_management_service._user_create_response(user)
+    return response
 
 
 # ── Single-user endpoints (/{user_id} LAST to avoid prefix collisions) ───
@@ -196,9 +196,9 @@ async def update_user(
         is_active=payload.is_active,
         updated_by_user_id=current_user.id,
     )
+    user_detail = user_management_service._user_detail(user)
     await db.commit()
-    await db.refresh(user)
-    return user_management_service._user_detail(user)
+    return user_detail
 
 
 @router.post(

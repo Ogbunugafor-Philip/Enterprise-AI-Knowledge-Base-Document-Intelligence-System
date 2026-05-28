@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.encryption import encrypt_field, hash_sensitive_data
 from app.core.security import generate_otp_code, generate_temporary_password, hash_password
@@ -166,7 +167,10 @@ async def create_user(
         except Exception:
             pass
 
-    return user
+    refreshed = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.id == user.id)
+    )
+    return refreshed.scalar_one()
 
 
 async def update_user(
@@ -241,7 +245,10 @@ async def update_user(
     if department_id is not None and str(department_id) != old_values["department_id"]:
         await log_action(db, organization_id=organization_id, user_id=updated_by_user_id, action="DEPARTMENT_CHANGED", resource_type="user", resource_id=str(user.id), old_value={"department_id": old_values["department_id"]}, new_value={"department_id": str(department_id)})
     await db.flush()
-    return user
+    refreshed = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.id == user.id)
+    )
+    return refreshed.scalar_one()
 
 
 async def activate_user(
@@ -418,7 +425,7 @@ async def get_user_list(
 
     offset = (page - 1) * page_size
     users_result = await db.execute(
-        base_query.order_by(User.created_at.desc()).limit(page_size).offset(offset)
+        base_query.options(selectinload(User.role)).order_by(User.created_at.desc()).limit(page_size).offset(offset)
     )
     users = list(users_result.scalars().all())
 
@@ -435,7 +442,7 @@ async def get_user_detail(
     user_id: UUID,
     organization_id: UUID | None,
 ) -> UserDetailResponse | None:
-    query = select(User).where(User.id == user_id)
+    query = select(User).options(selectinload(User.role)).where(User.id == user_id)
     if organization_id is not None:
         query = query.where(User.organization_id == organization_id)
     result = await db.execute(query)
