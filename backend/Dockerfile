@@ -6,7 +6,14 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential libmagic1 curl \
+    && apt-get install -y --no-install-recommends \
+        gcc \
+        libpq-dev \
+        libmagic1 \
+        tesseract-ocr \
+        clamav \
+        clamav-daemon \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -15,6 +22,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY worker ./worker
 
+RUN addgroup --system appuser && adduser --system --ingroup appuser appuser \
+    && mkdir -p /app/uploads /app/backups \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

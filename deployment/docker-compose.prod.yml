@@ -2,6 +2,8 @@ services:
   backend:
     build:
       context: ../backend
+    container_name: ent_rag_backend
+    restart: always
     env_file:
       - ../.env
     environment:
@@ -9,6 +11,11 @@ services:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
       QDRANT_HOST: qdrant
+    volumes:
+      - ../uploads:/app/uploads
+      - ../backups:/app/backups
+    networks:
+      - ent_rag_network
     depends_on:
       postgres:
         condition: service_healthy
@@ -17,11 +24,11 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=10)\""]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-    restart: always
+      start_period: 40s
     deploy:
       resources:
         limits:
@@ -29,9 +36,7 @@ services:
           memory: 1G
         reservations:
           memory: 512M
-    networks:
-      - ent_rag_network
-    logging: &default_logging
+    logging:
       driver: json-file
       options:
         max-size: "100m"
@@ -40,12 +45,13 @@ services:
   frontend:
     build:
       context: ../frontend
-    environment:
-      NODE_ENV: production
+    container_name: ent_rag_frontend
+    restart: always
+    networks:
+      - ent_rag_network
     depends_on:
       backend:
         condition: service_healthy
-    restart: always
     deploy:
       resources:
         limits:
@@ -53,26 +59,30 @@ services:
           memory: 512M
         reservations:
           memory: 256M
-    networks:
-      - ent_rag_network
-    logging: *default_logging
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   postgres:
-    image: postgres:15
-    env_file:
-      - ../.env
+    image: postgres:15-alpine
+    container_name: ent_rag_postgres
+    restart: always
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ent_rag_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 30s
       timeout: 5s
       retries: 5
-    restart: always
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -80,21 +90,22 @@ services:
           memory: 2G
         reservations:
           memory: 1G
-    networks:
-      - ent_rag_network
-    logging: *default_logging
 
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+    container_name: ent_rag_redis
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
+    networks:
+      - ent_rag_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 5s
       retries: 3
-    restart: always
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -102,20 +113,21 @@ services:
           memory: 512M
         reservations:
           memory: 256M
-    networks:
-      - ent_rag_network
-    logging: *default_logging
 
   qdrant:
-    image: qdrant/qdrant
+    image: qdrant/qdrant:latest
+    container_name: ent_rag_qdrant
+    restart: always
     volumes:
       - qdrant_data:/qdrant/storage
+    networks:
+      - ent_rag_network
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-    restart: always
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -123,13 +135,13 @@ services:
           memory: 2G
         reservations:
           memory: 1G
-    networks:
-      - ent_rag_network
-    logging: *default_logging
 
   celery_worker:
     build:
       context: ../backend
+    container_name: ent_rag_celery
+    restart: always
+    command: celery -A worker.celery_config.celery_app worker --loglevel=info --concurrency=4
     env_file:
       - ../.env
     environment:
@@ -137,15 +149,16 @@ services:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
       QDRANT_HOST: qdrant
-    command: celery -A worker.celery_config.celery_app worker --loglevel=warning --concurrency=4
+    volumes:
+      - ../uploads:/app/uploads
+      - ../backups:/app/backups
+    networks:
+      - ent_rag_network
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      qdrant:
-        condition: service_healthy
-    restart: always
     deploy:
       resources:
         limits:
@@ -153,22 +166,64 @@ services:
           memory: 1G
         reservations:
           memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  celery_beat:
+    build:
+      context: ../backend
+    container_name: ent_rag_celery_beat
+    restart: always
+    command: celery -A worker.celery_config.celery_app beat --loglevel=info
+    env_file:
+      - ../.env
+    environment:
+      ENVIRONMENT: production
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_HOST: qdrant
     networks:
       - ent_rag_network
-    logging: *default_logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   nginx:
-    build:
-      context: ./nginx
+    image: nginx:alpine
+    container_name: ent_rag_nginx
+    restart: always
     ports:
       - "80:80"
       - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/certbot/www:/var/www/certbot:ro
+      - certbot_data:/etc/letsencrypt:ro
+    networks:
+      - ent_rag_network
     depends_on:
       backend:
         condition: service_healthy
       frontend:
         condition: service_started
-    restart: always
     deploy:
       resources:
         limits:
@@ -176,14 +231,25 @@ services:
           memory: 256M
         reservations:
           memory: 128M
-    networks:
-      - ent_rag_network
-    logging: *default_logging
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  certbot:
+    image: certbot/certbot
+    container_name: ent_rag_certbot
+    volumes:
+      - certbot_data:/etc/letsencrypt
+      - ./nginx/certbot/www:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done"
 
 volumes:
   postgres_data:
   redis_data:
   qdrant_data:
+  certbot_data:
 
 networks:
   ent_rag_network:
