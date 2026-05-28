@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.admin.access_rules import router as admin_access_rules_router
+from app.api.v1.monitoring import router as monitoring_router
 from app.api.v1.rag_analytics import router as rag_analytics_router
 from app.api.v1.superadmin.users import router as superadmin_users_router
 from app.api.v1.admin.approvals import router as admin_approvals_router
@@ -30,6 +31,7 @@ from app.api.v1.users import router as users_router
 from app.core.data_isolation import IsolationViolationError
 from app.core.file_storage import ensure_upload_directory
 from app.middleware.auth_middleware import JWTAuthenticationMiddleware, PasswordExpiryMiddleware
+from app.middleware.monitoring_middleware import MonitoringMiddleware
 from app.middleware.rbac_middleware import RBACMiddleware
 
 logger = logging.getLogger("ent_rag")
@@ -80,6 +82,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(MonitoringMiddleware)
 app.add_middleware(PasswordExpiryMiddleware)
 app.add_middleware(RBACMiddleware)
 app.add_middleware(JWTAuthenticationMiddleware)
@@ -98,6 +101,7 @@ app.include_router(admin_versions_router, prefix="/api/v1")
 app.include_router(admin_access_rules_router, prefix="/api/v1")
 app.include_router(superadmin_users_router, prefix="/api/v1")
 app.include_router(rag_analytics_router, prefix="/api/v1")
+app.include_router(monitoring_router, prefix="/api/v1")
 
 
 @app.exception_handler(IsolationViolationError)

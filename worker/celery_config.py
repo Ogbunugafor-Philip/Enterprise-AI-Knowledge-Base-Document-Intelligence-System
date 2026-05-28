@@ -1,6 +1,7 @@
 import os
 
 from celery import Celery
+from celery.schedules import crontab
 
 redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
@@ -37,4 +38,18 @@ celery_app.conf.update(
     task_time_limit=600,
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    beat_schedule={
+        "run-alert-checks": {
+            "task": "monitoring.run_alert_checks",
+            "schedule": 300.0,
+        },
+        "process-error-analysis": {
+            "task": "monitoring.process_error_analysis",
+            "schedule": 600.0,
+        },
+        "cleanup-old-monitoring-logs": {
+            "task": "monitoring.cleanup_old_monitoring_logs",
+            "schedule": crontab(hour=2, minute=0),
+        },
+    },
 )

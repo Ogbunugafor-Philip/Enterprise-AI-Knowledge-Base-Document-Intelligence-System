@@ -3,7 +3,11 @@ import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { Building2, ShieldCheck, UserRoundCog } from "lucide-react";
 import HelpSection from "./components/HelpSection.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
+import AITrustReport from "./pages/AITrustReport.jsx";
+import AlertsPanel from "./pages/AlertsPanel.jsx";
 import ApprovalQueue from "./pages/ApprovalQueue.jsx";
+import DebuggingAssistant from "./pages/DebuggingAssistant.jsx";
+import MonitoringDashboard from "./pages/MonitoringDashboard.jsx";
 import ChatHistory from "./pages/ChatHistory.jsx";
 import ChatInterface from "./pages/ChatInterface.jsx";
 import DocumentManagement from "./pages/DocumentManagement.jsx";
@@ -112,6 +116,10 @@ export default function App() {
         path="/admin"
         element={<Workspace title="Admin Workspace" description="Organization-level controls for documents, users, and departments." />}
       />
+      <Route path="/monitoring" element={<MonitoringDashboard />} />
+      <Route path="/monitoring/alerts" element={<AlertsPanel />} />
+      <Route path="/monitoring/debugging" element={<DebuggingAssistant />} />
+      <Route path="/monitoring/ai-trust" element={<AITrustReport />} />
       <Route path="/superadmin/dashboard" element={<SuperAdminDashboard />} />
       <Route path="/superadmin/users" element={<UserManagement />} />
       <Route
