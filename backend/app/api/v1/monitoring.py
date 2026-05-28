@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, require_role
+from app.core.cache_config import CacheManager, TTL_MONITORING_METRICS, get_redis_client, make_cache_key
 from app.core.database import get_db
 from app.core.permissions import RoleEnum
 from app.models.monitoring import IncidentReport, SystemAlert
@@ -107,11 +108,20 @@ async def get_metrics(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     time_period: str = Query(default="24h", pattern="^(1h|6h|24h|7d|30d)$"),
+    redis=Depends(get_redis_client),
 ) -> SystemMetricsResponse:
+    cache_key = make_cache_key("monitoring_metrics", str(current_user.organization_id), time_period)
+    if redis:
+        cached = await CacheManager(redis).get_cached_response(cache_key)
+        if cached:
+            return SystemMetricsResponse(**cached)
     metrics = await monitoring_service.get_system_metrics(
         db, current_user.organization_id, period=time_period
     )
-    return SystemMetricsResponse(**metrics)
+    result = SystemMetricsResponse(**metrics)
+    if redis:
+        await CacheManager(redis).cache_response(cache_key, result.model_dump(), TTL_MONITORING_METRICS)
+    return result
 
 
 @router.get("/alerts", response_model=list[AlertResponse], dependencies=[_ADMIN_DEP])

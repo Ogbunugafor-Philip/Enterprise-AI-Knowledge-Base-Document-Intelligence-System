@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import DocumentUploadModal from "../components/DocumentUploadModal.jsx";
 import DocumentStatusTracker from "../components/DocumentStatusTracker.jsx";
+import { debounce } from "../utils/performance.js";
 import { adminApi } from "../services/adminApi.js";
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
 const badge = {
   uploaded: "bg-blue-100 text-blue-800",
@@ -13,18 +16,26 @@ const badge = {
   failed: "bg-red-100 text-red-800",
 };
 
-export default function DocumentManagement() {
+export default React.memo(function DocumentManagement() {
   const [documents, setDocuments] = useState([]);
-  const [filters, setFilters] = useState({ status: "", file_type: "", search_query: "", page: 1, page_size: 20 });
+  const [filters, setFilters] = useState({ status: "", file_type: "", search_query: "", page: 1, page_size: 10 });
   const [uploadOpen, setUploadOpen] = useState(false);
   const [selected, setSelected] = useState([]);
   const [trackingDoc, setTrackingDoc] = useState(null);
   const [trackingStatus, setTrackingStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const load = () =>
-    adminApi.getDocuments(filters).then((res) => res.ok && setDocuments(res.data?.documents || []));
+  const load = useCallback((overrideFilters) => {
+    setLoading(true);
+    adminApi.getDocuments(overrideFilters ?? filters).then((res) => {
+      if (res.ok) setDocuments(res.data?.documents || []);
+      setLoading(false);
+    });
+  }, [filters]);
 
-  useEffect(() => { load(); }, [filters.page]);
+  useEffect(() => { load(); }, [filters.page, filters.page_size]);
+
+  const debouncedLoad = useMemo(() => debounce(load, 300), [load]);
 
   const deleteDoc = async (id) => {
     if (!window.confirm("Delete this document?")) return;
@@ -104,12 +115,20 @@ export default function DocumentManagement() {
             className="rounded border px-3 py-2 text-sm"
             placeholder="Search title"
             value={filters.search_query}
-            onChange={(e) => setFilters({ ...filters, search_query: e.target.value })}
+            onChange={(e) => {
+              const updated = { ...filters, search_query: e.target.value, page: 1 };
+              setFilters(updated);
+              debouncedLoad(updated);
+            }}
           />
           <select
             className="rounded border px-3 py-2 text-sm"
             value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            onChange={(e) => {
+              const updated = { ...filters, status: e.target.value, page: 1 };
+              setFilters(updated);
+              debouncedLoad(updated);
+            }}
           >
             <option value="">All statuses</option>
             <option>uploaded</option>
@@ -122,7 +141,11 @@ export default function DocumentManagement() {
           <select
             className="rounded border px-3 py-2 text-sm"
             value={filters.file_type}
-            onChange={(e) => setFilters({ ...filters, file_type: e.target.value })}
+            onChange={(e) => {
+              const updated = { ...filters, file_type: e.target.value, page: 1 };
+              setFilters(updated);
+              debouncedLoad(updated);
+            }}
           >
             <option value="">All types</option>
             <option>pdf</option>
@@ -130,8 +153,20 @@ export default function DocumentManagement() {
             <option>txt</option>
             <option>xlsx</option>
           </select>
-          <input className="rounded border px-3 py-2 text-sm" type="date" />
-          <button className="rounded border px-3 py-2 text-sm" onClick={load}>
+          <select
+            className="rounded border px-3 py-2 text-sm"
+            value={filters.page_size}
+            onChange={(e) => {
+              const updated = { ...filters, page_size: Number(e.target.value), page: 1 };
+              setFilters(updated);
+              load(updated);
+            }}
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n} per page</option>
+            ))}
+          </select>
+          <button className="rounded border px-3 py-2 text-sm" onClick={() => load()}>
             Apply
           </button>
         </section>
@@ -164,7 +199,9 @@ export default function DocumentManagement() {
               </tr>
             </thead>
             <tbody>
-              {documents.length === 0 ? (
+              {loading ? (
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-400">Loading...</td></tr>
+              ) : documents.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-3 py-8 text-center text-slate-400">
                     No documents found.
@@ -256,4 +293,4 @@ export default function DocumentManagement() {
       </div>
     </main>
   );
-}
+});

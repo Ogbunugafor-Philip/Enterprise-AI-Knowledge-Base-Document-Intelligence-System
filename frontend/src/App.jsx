@@ -1,5 +1,6 @@
 import React from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { ErrorBoundary } from "./utils/errorBoundary.jsx";
 import { Building2, ShieldCheck, UserRoundCog } from "lucide-react";
 import DataRetentionSettings from "./components/DataRetentionSettings.jsx";
 import HelpSection from "./components/HelpSection.jsx";
@@ -100,7 +101,7 @@ function Workspace({ title, description }) {
   );
 }
 
-export default function App() {
+function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
@@ -138,5 +139,13 @@ export default function App() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+  );
+}
+
+export default function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   );
 }

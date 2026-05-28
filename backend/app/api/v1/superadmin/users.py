@@ -6,6 +6,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, require_role
+from app.core.cache_config import CacheManager, TTL_DASHBOARD_STATS, get_redis_client, make_cache_key
 from app.core.database import get_db
 from app.core.permissions import RoleEnum
 from app.models.user import User
@@ -39,8 +40,17 @@ _SUPER_ADMIN_DEP = Depends(require_role([RoleEnum.SUPER_ADMIN]))
 async def dashboard_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    redis=Depends(get_redis_client),
 ) -> SuperAdminDashboardStats:
-    return await user_management_service.get_superadmin_dashboard_stats(db)
+    cache_key = make_cache_key("superadmin_dashboard_stats", "global")
+    if redis:
+        cached = await CacheManager(redis).get_cached_response(cache_key)
+        if cached:
+            return SuperAdminDashboardStats(**cached)
+    stats = await user_management_service.get_superadmin_dashboard_stats(db)
+    if redis:
+        await CacheManager(redis).cache_response(cache_key, stats.model_dump(), TTL_DASHBOARD_STATS)
+    return stats
 
 
 # ── Bulk upload (must be declared before /{user_id}) ─────────────────────

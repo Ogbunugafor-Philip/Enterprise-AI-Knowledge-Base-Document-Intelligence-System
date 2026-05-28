@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, require_role
+from app.core.cache_config import CacheManager, TTL_DASHBOARD_STATS, get_redis_client, make_cache_key
 from app.core.file_storage import get_upload_path, save_uploaded_file
 from app.core.permissions import RoleEnum
 from app.core.database import get_db
@@ -198,12 +199,22 @@ async def delete_document(document_id: UUID, db: Annotated[AsyncSession, Depends
 
 
 @dashboard_router.get("/stats", response_model=AdminDashboardStats, dependencies=[Depends(require_role([RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN]))])
-async def dashboard_stats(db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_active_user)]):
+async def dashboard_stats(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    redis=Depends(get_redis_client),
+):
+    cache_key = make_cache_key("admin_dashboard_stats", str(current_user.organization_id))
+    if redis:
+        cached = await CacheManager(redis).get_cached_response(cache_key)
+        if cached:
+            return AdminDashboardStats(**cached)
+
     result = await db.execute(select(Document).where(Document.organization_id == current_user.organization_id).order_by(Document.created_at.desc()).limit(5))
     recent = list(result.scalars().all())
     count_result = await db.execute(select(func.count()).select_from(Document).where(Document.organization_id == current_user.organization_id))
     total = int(count_result.scalar_one())
-    return AdminDashboardStats(
+    stats = AdminDashboardStats(
         total_documents=total,
         pending_approval=sum(1 for doc in recent if doc.status == "reviewed"),
         approved_documents=sum(1 for doc in recent if doc.status == "approved"),
@@ -213,3 +224,6 @@ async def dashboard_stats(db: Annotated[AsyncSession, Depends(get_db)], current_
         documents_by_type={file_type: sum(1 for doc in recent if doc.file_type == file_type) for file_type in {doc.file_type for doc in recent}},
         recent_uploads=[_doc_response(doc) for doc in recent],
     )
+    if redis:
+        await CacheManager(redis).cache_response(cache_key, stats.model_dump(), TTL_DASHBOARD_STATS)
+    return stats

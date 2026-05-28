@@ -5,6 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
+from app.core.connection_pool_config import (
+    MAX_OVERFLOW,
+    POOL_PRE_PING,
+    POOL_RECYCLE,
+    POOL_SIZE,
+    POOL_TIMEOUT,
+)
 
 
 convention = {
@@ -22,11 +29,11 @@ class Base(DeclarativeBase):
 
 engine = create_async_engine(
     settings.async_database_url,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    pool_timeout=settings.DB_POOL_TIMEOUT,
-    pool_recycle=settings.DB_POOL_RECYCLE,
-    pool_pre_ping=True,
+    pool_size=POOL_SIZE,
+    max_overflow=MAX_OVERFLOW,
+    pool_timeout=POOL_TIMEOUT,
+    pool_recycle=POOL_RECYCLE,
+    pool_pre_ping=POOL_PRE_PING,
 )
 
 SessionLocal = async_sessionmaker(

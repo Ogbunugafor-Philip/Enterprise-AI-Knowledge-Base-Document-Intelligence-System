@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, require_permission
+from app.core.cache_config import CacheManager, TTL_SAMPLE_QUESTIONS, get_redis_client, make_cache_key
 from app.core.database import get_db
 from app.core.permissions import PermissionEnum
 from app.models.audit import AuditLog
@@ -208,8 +209,19 @@ async def search(
 
 
 @router.get("/sample-questions", response_model=SampleQuestionsResponse)
-async def sample_questions(current_user: Annotated[User, Depends(get_current_active_user)]) -> SampleQuestionsResponse:
-    return SampleQuestionsResponse(**get_sample_questions(current_user))
+async def sample_questions(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    redis=Depends(get_redis_client),
+) -> SampleQuestionsResponse:
+    cache_key = make_cache_key("sample_questions", str(current_user.organization_id))
+    if redis:
+        cached = await CacheManager(redis).get_cached_response(cache_key)
+        if cached:
+            return SampleQuestionsResponse(**cached)
+    result = SampleQuestionsResponse(**get_sample_questions(current_user))
+    if redis:
+        await CacheManager(redis).cache_response(cache_key, result.model_dump(), TTL_SAMPLE_QUESTIONS)
+    return result
 
 
 @router.get("/onboarding-status", response_model=OnboardingStatusResponse)
