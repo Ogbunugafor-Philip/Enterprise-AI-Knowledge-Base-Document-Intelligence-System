@@ -8,7 +8,9 @@ import ChatHistory from "./pages/ChatHistory.jsx";
 import ChatInterface from "./pages/ChatInterface.jsx";
 import DocumentManagement from "./pages/DocumentManagement.jsx";
 import DocumentVersions from "./pages/DocumentVersions.jsx";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
 import UserDashboard from "./pages/UserDashboard.jsx";
+import UserManagement from "./pages/UserManagement.jsx";
 
 function WorkspaceCard({ icon: Icon, title, description, to }) {
   return (
@@ -110,6 +112,8 @@ export default function App() {
         path="/admin"
         element={<Workspace title="Admin Workspace" description="Organization-level controls for documents, users, and departments." />}
       />
+      <Route path="/superadmin/dashboard" element={<SuperAdminDashboard />} />
+      <Route path="/superadmin/users" element={<UserManagement />} />
       <Route
         path="/super-admin"
         element={<Workspace title="Super Admin Workspace" description="Platform-wide tenant operations, security, and monitoring." />}
