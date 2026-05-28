@@ -2,17 +2,21 @@ from typing import Any
 
 from app.models.document import Document
 from app.models.user import User
-from app.services.rbac_service import check_document_access
+from app.services.approval_service import enforce_approval_gate
 
 MIN_RETRIEVAL_THRESHOLD = 0.5
 
+_INELIGIBLE_STATUSES = {"uploaded", "processing", "reviewed", "rejected", "archived", "deleted", "failed", "expired"}
+
 
 async def validate_document_eligibility(db, user: User, document: Document) -> tuple[bool, str]:
-    if not document.is_approved:
-        return False, "Document is not approved"
-    if document.status in {"archived", "deleted", "expired", "rejected"}:
+    if not enforce_approval_gate(document):
+        return False, "Document has not passed the approval gate"
+    if document.status in _INELIGIBLE_STATUSES:
         return False, "Document is not eligible for retrieval"
-    if not await check_document_access(db, user, document):
+    from app.services.access_rule_service import check_user_document_access
+
+    if not await check_user_document_access(db, user, document):
         return False, "User does not have access to this document"
     return True, "eligible"
 

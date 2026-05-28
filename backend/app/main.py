@@ -15,8 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.admin.access_rules import router as admin_access_rules_router
+from app.api.v1.admin.approvals import router as admin_approvals_router
 from app.api.v1.admin.documents import dashboard_router as admin_dashboard_router
 from app.api.v1.admin.documents import router as admin_documents_router
+from app.api.v1.admin.versions import router as admin_versions_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.departments import router as departments_router
 from app.api.v1.roles import router as roles_router
@@ -88,6 +91,9 @@ app.include_router(chat_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(admin_documents_router, prefix="/api/v1")
 app.include_router(admin_dashboard_router, prefix="/api/v1")
+app.include_router(admin_approvals_router, prefix="/api/v1")
+app.include_router(admin_versions_router, prefix="/api/v1")
+app.include_router(admin_access_rules_router, prefix="/api/v1")
 
 
 @app.exception_handler(IsolationViolationError)
