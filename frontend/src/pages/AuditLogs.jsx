@@ -1,150 +1,161 @@
-import React, { useEffect, useState } from "react";
-import { Download, Search } from "lucide-react";
-import { complianceApi } from "../services/complianceApi.js";
+import React, { useState, useEffect, useCallback } from 'react';
+import { ScrollText, Download, Filter } from 'lucide-react';
+import AppLayout from '../components/Layout/AppLayout.jsx';
+import DataTable from '../components/UI/DataTable.jsx';
+import Modal from '../components/UI/Modal.jsx';
+import { complianceApi } from '../services/complianceApi.js';
 
-const ACTION_COLORS = {
-  CREATE: "bg-emerald-100 text-emerald-700",
-  CREATED: "bg-emerald-100 text-emerald-700",
-  UPDATE: "bg-blue-100 text-blue-700",
-  UPDATED: "bg-blue-100 text-blue-700",
-  DELETE: "bg-red-100 text-red-700",
-  DELETED: "bg-red-100 text-red-700",
-  LOGIN_FAILED: "bg-orange-100 text-orange-700",
-  ACCOUNT_LOCKED: "bg-orange-100 text-orange-700",
-  PERMISSION_DENIED: "bg-orange-100 text-orange-700",
+const ACTION_BADGE = {
+  LOGIN: 'badge-gray', LOGOUT: 'badge-gray',
+  CREATE: 'badge-green', UPDATE: 'badge-blue', DELETE: 'badge-red',
+  SECURITY: 'badge-red', DOCUMENT: 'badge-purple',
 };
 
-function actionClass(action = "") {
-  const hit = Object.keys(ACTION_COLORS).find((key) => action.includes(key));
-  return ACTION_COLORS[hit] || "bg-slate-100 text-slate-700";
+function actionBadgeClass(action) {
+  if (!action) return 'badge-gray';
+  const key = Object.keys(ACTION_BADGE).find(k => action.toUpperCase().includes(k));
+  return ACTION_BADGE[key] || 'badge-gray';
 }
+
+function formatDate(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+const ACTION_TYPES = ['LOGIN', 'LOGOUT', 'CREATE', 'UPDATE', 'DELETE', 'SECURITY', 'DOCUMENT'];
 
 export default function AuditLogs() {
   const [logs, setLogs] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({ user_id: "", action: "", resource_type: "", date_from: "", date_to: "", page: 1, page_size: 20 });
-  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [actionType, setActionType] = useState('');
 
-  const cleanParams = () => Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== ""));
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    const res = await complianceApi.getAuditLogs(cleanParams());
-    if (res.ok) {
-      setLogs(res.data.logs || []);
-      setTotal(res.data.total_count || 0);
-    }
+    const params = {};
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    if (actionType) params.action_type = actionType;
+    const res = await complianceApi.getAuditLogs(params);
+    if (res.ok) setLogs(res.data?.logs || res.data || []);
     setLoading(false);
-  };
+  }, [dateFrom, dateTo, actionType]);
 
-  useEffect(() => { load(); }, [filters.page]);
+  useEffect(() => { load(); }, [load]);
 
-  const openDetail = async (id) => {
-    const res = await complianceApi.getAuditLogDetail(id);
-    if (res.ok) setSelected(res.data);
-  };
-
-  const exportCsv = async () => {
-    const res = await complianceApi.exportAuditLogs(cleanParams());
+  async function handleExport() {
+    setExporting(true);
+    const params = {};
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    if (actionType) params.action_type = actionType;
+    const res = await complianceApi.exportAuditLogs(params);
     if (res.ok) {
       const url = URL.createObjectURL(res.blob);
-      const a = document.createElement("a");
+      const a = document.createElement('a');
       a.href = url;
-      a.download = "audit_logs.csv";
+      a.download = `audit_logs_${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     }
-  };
+    setExporting(false);
+  }
 
-  const visible = logs.filter((log) => {
-    const term = search.toLowerCase();
-    return !term || [log.action, log.resource_type, log.resource_id, log.user_email_masked, log.ip_address].some((v) => String(v || "").toLowerCase().includes(term));
-  });
+  const columns = [
+    { key: 'timestamp', header: 'Timestamp', sortable: true, accessor: r => formatDate(r.timestamp || r.created_at) },
+    { key: 'user', header: 'User', accessor: r => r.user_email || r.username || r.user || '—' },
+    {
+      key: 'action', header: 'Action',
+      render: r => <span className={actionBadgeClass(r.action_type || r.action)}>{r.action_type || r.action || '—'}</span>,
+    },
+    { key: 'resource_type', header: 'Resource Type', accessor: r => r.resource_type || '—' },
+    { key: 'ip_address', header: 'IP Address', accessor: r => r.ip_address || '—' },
+    {
+      key: 'status', header: 'Status',
+      render: r => <span className={r.success !== false ? 'badge-green' : 'badge-red'}>{r.success !== false ? 'Success' : 'Failed'}</span>,
+    },
+    {
+      key: 'detail', header: '',
+      render: r => (
+        <button onClick={() => setSelected(r)} className="text-xs text-blue-600 hover:underline font-medium">View</button>
+      ),
+    },
+  ];
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6">
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-5 flex items-center justify-between border-b pb-5">
-          <div>
-            <h1 className="text-2xl font-semibold">Audit Logs</h1>
-            <p className="text-sm text-slate-500">{total} compliance events</p>
-          </div>
-          <button onClick={exportCsv} className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm hover:bg-white">
-            <Download className="h-4 w-4" /> Export CSV
-          </button>
-        </header>
-
-        <section className="mb-4 grid gap-3 md:grid-cols-6">
-          <div className="flex items-center gap-2 rounded border bg-white px-3 py-2 md:col-span-2">
-            <Search className="h-4 w-4 text-slate-400" />
-            <input className="w-full text-sm outline-none" placeholder="Search logs" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          {[
-            ["user_id", "User ID"],
-            ["action", "Action"],
-            ["resource_type", "Resource"],
-            ["date_from", "From"],
-            ["date_to", "To"],
-          ].map(([key, label]) => (
-            <input
-              key={key}
-              type={key.startsWith("date") ? "date" : "text"}
-              className="rounded border px-3 py-2 text-sm"
-              placeholder={label}
-              value={filters[key]}
-              onChange={(e) => setFilters({ ...filters, [key]: e.target.value, page: 1 })}
-            />
-          ))}
-          <button onClick={load} className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Apply</button>
-        </section>
-
-        <div className="overflow-x-auto rounded border bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50">
-              <tr>
-                {["Timestamp", "User", "Action", "Resource Type", "Resource ID", "Status", "IP Address"].map((h) => <th key={h} className="px-3 py-3">{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">Loading audit logs...</td></tr>
-              ) : visible.length === 0 ? (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">No audit logs found.</td></tr>
-              ) : visible.map((log) => (
-                <tr key={log.id} onClick={() => openDetail(log.id)} className="cursor-pointer border-b hover:bg-slate-50">
-                  <td className="px-3 py-3 text-xs text-slate-500">{new Date(log.created_at).toLocaleString()}</td>
-                  <td className="px-3 py-3">{log.user_email_masked || log.user_id || "System"}</td>
-                  <td className="px-3 py-3"><span className={`rounded px-2 py-1 text-xs font-medium ${actionClass(log.action)}`}>{log.action}</span></td>
-                  <td className="px-3 py-3">{log.resource_type}</td>
-                  <td className="max-w-xs truncate px-3 py-3 text-slate-500">{log.resource_id}</td>
-                  <td className="px-3 py-3">{log.status}</td>
-                  <td className="px-3 py-3 text-slate-500">{log.ip_address || "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <AppLayout title="Audit Logs" subtitle="Complete system activity trail">
+      <div className="card p-4 mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1 text-gray-500">
+          <Filter className="w-4 h-4" />
+          <span className="text-sm font-medium">Filters:</span>
         </div>
-
-        <div className="mt-4 flex items-center justify-between">
-          <button disabled={filters.page <= 1} onClick={() => setFilters({ ...filters, page: filters.page - 1 })} className="rounded border px-3 py-2 text-sm disabled:opacity-40">Previous</button>
-          <span className="text-sm text-slate-500">Page {filters.page}</span>
-          <button onClick={() => setFilters({ ...filters, page: filters.page + 1 })} className="rounded border px-3 py-2 text-sm">Next</button>
+        <input type="date" className="input w-40" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        <input type="date" className="input w-40" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        <select className="input w-40" value={actionType} onChange={e => setActionType(e.target.value)}>
+          <option value="">All Actions</option>
+          {ACTION_TYPES.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <div className="ml-auto">
+          <button onClick={handleExport} disabled={exporting} className="btn-secondary flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
         </div>
       </div>
 
-      {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded border bg-white p-5 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-semibold">Audit Detail</h2>
-              <button onClick={() => setSelected(null)} className="text-xl text-slate-400 hover:text-slate-700">&times;</button>
+      <DataTable
+        columns={columns}
+        data={logs}
+        loading={loading}
+        emptyMessage="No audit logs found"
+        rowKey="id"
+        searchable
+        pageSize={20}
+      />
+
+      <Modal isOpen={!!selected} onClose={() => setSelected(null)} title="Audit Log Detail" size="xl"
+        footer={<button onClick={() => setSelected(null)} className="btn-secondary">Close</button>}
+      >
+        {selected && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Timestamp</p><p className="text-gray-900">{formatDate(selected.timestamp || selected.created_at)}</p></div>
+              <div><p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">User</p><p className="text-gray-900">{selected.user_email || selected.username || selected.user || '—'}</p></div>
+              <div><p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Action</p><span className={actionBadgeClass(selected.action_type || selected.action)}>{selected.action_type || selected.action}</span></div>
+              <div><p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Resource Type</p><p className="text-gray-900">{selected.resource_type || '—'}</p></div>
+              <div><p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Resource ID</p><p className="text-gray-900 font-mono text-xs">{selected.resource_id || '—'}</p></div>
+              <div><p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">IP Address</p><p className="text-gray-900 font-mono text-xs">{selected.ip_address || '—'}</p></div>
             </div>
-            <pre className="overflow-auto rounded bg-slate-50 p-4 text-xs">{JSON.stringify(selected, null, 2)}</pre>
+            {selected.old_value !== undefined && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Previous Value</p>
+                <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700 overflow-x-auto whitespace-pre-wrap">
+                  {typeof selected.old_value === 'string' ? selected.old_value : JSON.stringify(selected.old_value, null, 2)}
+                </pre>
+              </div>
+            )}
+            {selected.new_value !== undefined && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">New Value</p>
+                <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700 overflow-x-auto whitespace-pre-wrap">
+                  {typeof selected.new_value === 'string' ? selected.new_value : JSON.stringify(selected.new_value, null, 2)}
+                </pre>
+              </div>
+            )}
+            {selected.details && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Details</p>
+                <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700 overflow-x-auto whitespace-pre-wrap">
+                  {typeof selected.details === 'string' ? selected.details : JSON.stringify(selected.details, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
-        </div>
-      )}
-    </main>
+        )}
+      </Modal>
+    </AppLayout>
   );
 }

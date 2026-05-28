@@ -1,151 +1,166 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Download, RefreshCw, ShieldCheck, ShieldAlert } from "lucide-react";
-import { securityApi } from "../services/securityApi.js";
+import React, { useState, useEffect } from 'react';
+import { Shield, CheckCircle, XCircle, AlertTriangle, Lock, RefreshCw } from 'lucide-react';
+import AppLayout from '../components/Layout/AppLayout.jsx';
+import StatsCard from '../components/UI/StatsCard.jsx';
+import { securityApi } from '../services/securityApi.js';
 
-const SEVERITY = {
-  critical: "bg-red-100 text-red-700",
-  high: "bg-orange-100 text-orange-700",
-  medium: "bg-yellow-100 text-yellow-700",
-  low: "bg-blue-100 text-blue-700",
+function formatDate(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+const SEVERITY_COLOR = {
+  critical: 'text-red-600',
+  high: 'text-orange-600',
+  medium: 'text-yellow-600',
+  low: 'text-blue-600',
 };
 
 export default function SecurityDashboard() {
-  const [report, setReport] = useState(null);
-  const [rateLimits, setRateLimits] = useState([]);
+  const [checklist, setChecklist] = useState([]);
   const [events, setEvents] = useState([]);
+  const [rateLimits, setRateLimits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [resettingKey, setResettingKey] = useState('');
 
-  const load = async () => {
-    setLoading(true);
-    const [checkRes, rateRes, eventRes] = await Promise.all([
-      securityApi.getSecurityChecklist(),
-      securityApi.getRateLimitStatus(),
-      securityApi.getSecurityEvents(),
-    ]);
-    if (checkRes.ok) setReport(checkRes.data);
-    if (rateRes.ok) setRateLimits(rateRes.data.items || []);
-    if (eventRes.ok) setEvents(eventRes.data || []);
-    setLoading(false);
-  };
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [checkRes, eventRes, rateRes] = await Promise.all([
+        securityApi.getSecurityChecklist(),
+        securityApi.getSecurityEvents(),
+        securityApi.getRateLimitStatus(),
+      ]);
+      if (checkRes.ok) setChecklist(checkRes.data?.checks || checkRes.data || []);
+      if (eventRes.ok) setEvents(eventRes.data?.events || eventRes.data || []);
+      if (rateRes.ok) setRateLimits(rateRes.data?.limits || rateRes.data || []);
+      setLoading(false);
+    }
+    load();
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  const passed = checklist.filter(c => c.status === 'PASS').length;
+  const failed = checklist.filter(c => c.status === 'FAIL').length;
+  const criticalFails = checklist.filter(c => c.status === 'FAIL' && c.severity === 'critical');
+  const securityScore = checklist.length > 0 ? Math.round((passed / checklist.length) * 100) : 0;
 
-  const score = useMemo(() => {
-    const checks = report?.checks || [];
-    if (!checks.length) return 0;
-    return Math.round((checks.filter((check) => check.status === "PASS").length / checks.length) * 100);
-  }, [report]);
-
-  const exportReport = () => {
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "security_report.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  async function handleResetRateLimit(key) {
+    setResettingKey(key);
+    const res = await securityApi.resetRateLimit(key);
+    if (!res.ok) alert(res.error);
+    setResettingKey('');
+  }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6">
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-6 flex items-center justify-between border-b pb-5">
+    <AppLayout title="Security" subtitle="System security posture and controls">
+      {!loading && criticalFails.length > 0 && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
           <div>
-            <h1 className="text-2xl font-semibold">Security Dashboard</h1>
-            <p className="text-sm text-slate-500">Security posture, rate limits, and recent security events.</p>
+            <p className="font-semibold text-red-800">Critical Security Issues Detected</p>
+            <ul className="mt-1 space-y-1">
+              {criticalFails.map((c, i) => (
+                <li key={i} className="text-sm text-red-700">• {c.name}: {c.recommendation || c.message}</li>
+              ))}
+            </ul>
           </div>
-          <div className="flex gap-2">
-            <button onClick={load} className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm hover:bg-white">
-              <RefreshCw className="h-4 w-4" /> Refresh
-            </button>
-            <button onClick={exportReport} disabled={!report} className="inline-flex items-center gap-2 rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50">
-              <Download className="h-4 w-4" /> Export Report
-            </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="card p-6 flex flex-col items-center justify-center">
+          <div className={`text-5xl font-black mb-1 ${securityScore >= 80 ? 'text-green-600' : securityScore >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
+            {loading ? '…' : `${securityScore}%`}
           </div>
-        </header>
-
-        {loading && !report ? <p className="text-sm text-slate-400">Loading security data...</p> : (
-          <>
-            <section className="mb-6 grid gap-4 md:grid-cols-4">
-              <div className="rounded border bg-white p-4">
-                <p className="text-xs font-medium text-slate-500">Security Score</p>
-                <div className="mt-2 flex items-center gap-3">
-                  {score >= 80 ? <ShieldCheck className="h-8 w-8 text-emerald-600" /> : <ShieldAlert className="h-8 w-8 text-red-600" />}
-                  <span className="text-3xl font-semibold">{score}%</span>
-                </div>
-              </div>
-              <div className="rounded border bg-white p-4">
-                <p className="text-xs font-medium text-slate-500">Critical Failures</p>
-                <p className="mt-2 text-3xl font-semibold text-red-700">{report?.critical_failures || 0}</p>
-              </div>
-              <div className="rounded border bg-white p-4">
-                <p className="text-xs font-medium text-slate-500">High Failures</p>
-                <p className="mt-2 text-3xl font-semibold text-orange-700">{report?.high_failures || 0}</p>
-              </div>
-              <div className="rounded border bg-white p-4">
-                <p className="text-xs font-medium text-slate-500">Overall Status</p>
-                <p className={`mt-2 inline-flex rounded px-2 py-1 text-sm font-medium ${report?.overall_status === "PASS" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                  {report?.overall_status || "UNKNOWN"}
-                </p>
-              </div>
-            </section>
-
-            <section className="mb-6 rounded border bg-white">
-              <div className="border-b px-4 py-3 font-semibold">Security Checklist</div>
-              <div className="divide-y">
-                {(report?.checks || []).map((check) => (
-                  <div key={check.check_name} className={`grid gap-3 px-4 py-3 md:grid-cols-[160px_1fr_120px] ${check.status === "FAIL" && check.severity === "critical" ? "bg-red-50" : ""}`}>
-                    <div>
-                      <span className={`rounded px-2 py-1 text-xs font-semibold ${check.status === "PASS" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>{check.status}</span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-slate-900">{check.check_name}</p>
-                      <p className="text-sm text-slate-500">{check.description}</p>
-                      {check.status === "FAIL" && <p className="mt-1 text-sm text-red-700">{check.recommendation}</p>}
-                    </div>
-                    <span className={`h-fit rounded px-2 py-1 text-xs font-medium ${SEVERITY[check.severity] || SEVERITY.medium}`}>{check.severity}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded border bg-white p-4">
-                <h2 className="mb-3 font-semibold">Rate Limit Status</h2>
-                {(rateLimits || []).length === 0 ? <p className="text-sm text-slate-400">No active in-memory rate limit buckets.</p> : (
-                  <div className="space-y-2 text-sm">
-                    {rateLimits.map((item) => (
-                      <div key={item.key} className="rounded border px-3 py-2">
-                        <p className="font-medium">{item.key}</p>
-                        <p className="text-xs text-slate-500">Count {item.count} resets {item.reset_at}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded border bg-white p-4">
-                <h2 className="mb-3 font-semibold">Recent Security Events</h2>
-                {(events || []).length === 0 ? <p className="text-sm text-slate-400">No recent security events.</p> : (
-                  <table className="w-full text-left text-sm">
-                    <thead><tr className="border-b"><th className="py-2">Time</th><th>Type</th><th>IP</th><th>Endpoint</th></tr></thead>
-                    <tbody>
-                      {events.map((event, i) => (
-                        <tr key={`${event.created_at}-${i}`} className="border-b">
-                          <td className="py-2 text-xs text-slate-500">{new Date(event.created_at).toLocaleString()}</td>
-                          <td>{event.event_type}</td>
-                          <td>{event.ip_address || "-"}</td>
-                          <td className="max-w-xs truncate">{event.endpoint || "-"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </section>
-          </>
-        )}
+          <p className="text-sm font-medium text-gray-500">Security Score</p>
+        </div>
+        <StatsCard title="Checks Passed" value={loading ? '…' : passed} icon={CheckCircle} color="green" />
+        <StatsCard title="Checks Failed" value={loading ? '…' : failed} icon={XCircle} color="red" />
+        <StatsCard title="Critical Issues" value={loading ? '…' : criticalFails.length} icon={AlertTriangle} color={criticalFails.length > 0 ? 'red' : 'green'} />
       </div>
-    </main>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-900">Security Checklist</h2>
+          </div>
+          <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
+            {loading ? (
+              <div className="p-6 text-center text-gray-400 text-sm">Loading…</div>
+            ) : checklist.length === 0 ? (
+              <div className="p-6 text-center text-gray-400 text-sm">No checklist data</div>
+            ) : checklist.map((check, i) => (
+              <div key={i} className="flex items-start gap-3 px-6 py-3">
+                {check.status === 'PASS'
+                  ? <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  : <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                }
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-gray-900">{check.name || check.check_name}</p>
+                    <span className={`text-xs font-medium ${SEVERITY_COLOR[check.severity] || 'text-gray-500'}`}>{check.severity}</span>
+                  </div>
+                  {check.status === 'FAIL' && check.recommendation && (
+                    <p className="text-xs text-gray-500 mt-0.5">{check.recommendation}</p>
+                  )}
+                </div>
+                <span className={check.status === 'PASS' ? 'badge-green' : 'badge-red'}>{check.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-900">Recent Security Events</h2>
+          </div>
+          <div className="overflow-x-auto max-h-96 overflow-y-auto">
+            <table className="table">
+              <thead><tr><th>Event Type</th><th>IP Address</th><th>Endpoint</th><th>Time</th></tr></thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={4} className="text-center text-gray-400 text-sm py-8">Loading…</td></tr>
+                ) : events.length === 0 ? (
+                  <tr><td colSpan={4} className="empty-state">No events recorded</td></tr>
+                ) : events.slice(0, 20).map((ev, i) => (
+                  <tr key={i}>
+                    <td><span className="badge-red">{ev.event_type || ev.type}</span></td>
+                    <td className="font-mono text-xs">{ev.ip_address || '—'}</td>
+                    <td className="font-mono text-xs truncate max-w-xs">{ev.endpoint || '—'}</td>
+                    <td className="text-xs">{formatDate(ev.timestamp || ev.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {rateLimits.length > 0 && (
+        <div className="card p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">Rate Limit Status</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {rateLimits.map((rl, i) => (
+              <div key={i} className="p-4 bg-gray-50 rounded-xl flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{rl.key || rl.identifier}</p>
+                  <p className="text-xs text-gray-500">
+                    {rl.requests ?? 0}/{rl.limit ?? '∞'} · {rl.window || '1m'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleResetRateLimit(rl.key || rl.identifier)}
+                  disabled={resettingKey === (rl.key || rl.identifier)}
+                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                  title="Reset"
+                >
+                  <RefreshCw className={`w-4 h-4 ${resettingKey === (rl.key || rl.identifier) ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </AppLayout>
   );
 }

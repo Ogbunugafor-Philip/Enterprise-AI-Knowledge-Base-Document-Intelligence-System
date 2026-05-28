@@ -1,195 +1,268 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import {
-  Search, Filter, PlusCircle, Upload,
-  CheckCircle, XCircle, Lock, MailWarning, RefreshCw, Eye
-} from "lucide-react";
-import { superAdminApi } from "../services/superAdminApi.js";
-import CreateUserModal from "../components/CreateUserModal.jsx";
-import BulkUploadModal from "../components/BulkUploadModal.jsx";
-import UserDetailPanel from "../components/UserDetailPanel.jsx";
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Users, UserPlus, Upload, Lock, Unlock, RefreshCw, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import AppLayout from '../components/Layout/AppLayout.jsx';
+import DataTable from '../components/UI/DataTable.jsx';
+import Modal from '../components/UI/Modal.jsx';
+import PageHeader from '../components/UI/PageHeader.jsx';
+import { superAdminApi } from '../services/superAdminApi.js';
 
-function StatusBadge({ user }) {
-  const now = new Date();
-  const isLocked = user.locked_until && new Date(user.locked_until) > now;
-  if (isLocked) return <span className="rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700">Locked</span>;
-  if (!user.is_active) return <span className="rounded px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600">Inactive</span>;
-  if (!user.is_verified) return <span className="rounded px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-700">Unverified</span>;
-  return <span className="rounded px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">Active</span>;
+function RoleBadge({ role }) {
+  const map = { SUPER_ADMIN: 'badge-purple', ADMIN: 'badge-blue', USER: 'badge-gray' };
+  return <span className={map[role] || 'badge-gray'}>{role?.replace('_', ' ') || '—'}</span>;
 }
 
+function StatusBadge({ status }) {
+  const map = { active: 'badge-green', inactive: 'badge-gray', locked: 'badge-red' };
+  return <span className={map[status] || 'badge-gray'}>{status || '—'}</span>;
+}
+
+function formatDate(ts) {
+  if (!ts) return 'Never';
+  return new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+const ROLES = ['USER', 'ADMIN', 'SUPER_ADMIN'];
+const DEPARTMENTS = ['Engineering', 'Finance', 'HR', 'Legal', 'Operations', 'Sales', 'IT', 'Management'];
+const STATUSES = ['active', 'inactive', 'locked'];
+
 export default function UserManagement() {
-  const [data, setData] = useState({ users: [], total_count: 0, page: 1, page_size: 20 });
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ search_query: "", is_active: "", is_verified: "", organization_id: "", role: "" });
+  const [error, setError] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [toast, setToast] = useState("");
-  const [page, setPage] = useState(1);
+  const [creating, setCreating] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', role: 'USER', department: '' });
+  const [formError, setFormError] = useState('');
 
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
-
-  const load = async (p = 1) => {
+  const loadUsers = useCallback(async () => {
     setLoading(true);
-    const params = { page: p, page_size: 20 };
-    if (filters.search_query) params.search_query = filters.search_query;
-    if (filters.is_active !== "") params.is_active = filters.is_active === "true";
-    if (filters.is_verified !== "") params.is_verified = filters.is_verified === "true";
-    if (filters.organization_id) params.organization_id = filters.organization_id;
-    if (filters.role) params.role = filters.role;
+    const params = {};
+    if (roleFilter) params.role = roleFilter;
+    if (statusFilter) params.status = statusFilter;
     const res = await superAdminApi.getUsers(params);
-    if (res.ok) setData(res.data);
+    if (res.ok) setUsers(res.data?.users || res.data || []);
+    else setError(res.error);
     setLoading(false);
-  };
+  }, [roleFilter, statusFilter]);
 
-  useEffect(() => { load(page); }, [page]);
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  const handleAction = async (action, userId) => {
-    let res;
-    if (action === "activate") res = await superAdminApi.activateUser(userId);
-    else if (action === "deactivate") res = await superAdminApi.deactivateUser(userId, { user_id: userId, is_active: false });
-    else if (action === "unlock") res = await superAdminApi.unlockUser(userId);
-    else if (action === "reset") res = await superAdminApi.resetUserPassword(userId, { user_id: userId, force_change_on_login: true });
-    if (res?.ok) { showToast(`${action} successful.`); load(page); }
-    else showToast(res?.error || "Action failed");
-  };
+  async function handleCreate(e) {
+    e.preventDefault();
+    setFormError('');
+    if (!form.first_name || !form.last_name || !form.email) {
+      setFormError('First name, last name and email are required.');
+      return;
+    }
+    setCreating(true);
+    const res = await superAdminApi.createUser(form);
+    setCreating(false);
+    if (res.ok) { setShowCreate(false); setForm({ first_name: '', last_name: '', email: '', role: 'USER', department: '' }); loadUsers(); }
+    else setFormError(res.error);
+  }
+
+  async function handleResetPassword(user) {
+    const newPwd = prompt(`Set new password for ${user.email}:`);
+    if (!newPwd) return;
+    const res = await superAdminApi.resetUserPassword(user.id, { new_password: newPwd });
+    if (!res.ok) alert(res.error);
+  }
+
+  async function handleToggleActive(user) {
+    const res = user.is_active
+      ? await superAdminApi.deactivateUser(user.id, { reason: 'Admin action' })
+      : await superAdminApi.activateUser(user.id);
+    if (res.ok) loadUsers();
+    else alert(res.error);
+  }
+
+  async function handleUnlock(user) {
+    const res = await superAdminApi.unlockUser(user.id);
+    if (res.ok) loadUsers();
+    else alert(res.error);
+  }
+
+  async function handleDelete(user) {
+    if (!window.confirm(`Delete user ${user.email}? This cannot be undone.`)) return;
+    const res = await superAdminApi.deleteUser(user.id);
+    if (res.ok) loadUsers();
+    else alert(res.error);
+  }
+
+  async function handleBulkUpload() {
+    if (!bulkFile) return;
+    setBulkUploading(true);
+    const fd = new FormData();
+    fd.append('file', bulkFile);
+    const res = await superAdminApi.bulkUploadUsers(fd);
+    setBulkUploading(false);
+    if (res.ok) { setShowBulk(false); setBulkFile(null); loadUsers(); }
+    else alert(res.error);
+  }
+
+  const columns = [
+    {
+      key: 'name', header: 'Name', sortable: true,
+      accessor: r => `${r.first_name || ''} ${r.last_name || ''}`.trim(),
+      render: r => <span className="font-medium text-gray-900">{r.first_name} {r.last_name}</span>,
+    },
+    { key: 'email', header: 'Email', sortable: true, accessor: 'email' },
+    { key: 'department', header: 'Department', accessor: r => r.department || '—' },
+    { key: 'role', header: 'Role', render: r => <RoleBadge role={r.role} /> },
+    {
+      key: 'status', header: 'Status',
+      render: r => {
+        const status = r.is_locked ? 'locked' : r.is_active ? 'active' : 'inactive';
+        return <StatusBadge status={status} />;
+      },
+    },
+    { key: 'last_login', header: 'Last Login', accessor: r => formatDate(r.last_login) },
+    {
+      key: 'actions', header: 'Actions',
+      render: r => {
+        const status = r.is_locked ? 'locked' : r.is_active ? 'active' : 'inactive';
+        return (
+          <div className="flex items-center gap-1">
+            <button title="Reset Password" onClick={() => handleResetPassword(r)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded">
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <button title={r.is_active ? 'Deactivate' : 'Activate'} onClick={() => handleToggleActive(r)} className="p-1.5 rounded">
+              {r.is_active ? <XCircle className="w-4 h-4 text-yellow-600" /> : <CheckCircle className="w-4 h-4 text-green-600" />}
+            </button>
+            {status === 'locked' && (
+              <button title="Unlock" onClick={() => handleUnlock(r)} className="p-1.5 text-orange-600 hover:bg-orange-50 rounded">
+                <Unlock className="w-4 h-4" />
+              </button>
+            )}
+            <button title="Delete" onClick={() => handleDelete(r)} className="p-1.5 text-red-600 hover:bg-red-50 rounded">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6">
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 rounded bg-slate-900 px-4 py-2 text-sm text-white shadow">
-          {toast}
-        </div>
-      )}
-      {showCreate && <CreateUserModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(1); showToast("User created."); }} />}
-      {showBulk && <BulkUploadModal onClose={() => setShowBulk(false)} onComplete={() => { setShowBulk(false); load(1); }} />}
-      {selectedUser && <UserDetailPanel user={selectedUser} onClose={() => setSelectedUser(null)} onRefresh={() => load(page)} />}
-
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-6 flex flex-col gap-3 border-b pb-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <Link to="/superadmin/dashboard" className="text-sm text-slate-500 hover:text-slate-700">← Super Admin</Link>
-            <h1 className="mt-1 text-2xl font-semibold">User Management</h1>
-            <p className="text-sm text-slate-500">{data.total_count} users total</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => setShowBulk(true)} className="flex items-center gap-1 rounded border px-3 py-2 text-sm hover:bg-white">
-              <Upload className="h-4 w-4" /> Bulk Upload
-            </button>
-            <button onClick={() => setShowCreate(true)} className="flex items-center gap-1 rounded bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-700">
-              <PlusCircle className="h-4 w-4" /> Create User
-            </button>
-          </div>
-        </header>
-
-        {/* Filters */}
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded border bg-white px-4 py-3">
-          <Filter className="h-4 w-4 text-slate-400" />
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search name or email…"
-              value={filters.search_query}
-              onChange={(e) => setFilters({ ...filters, search_query: e.target.value })}
-              className="rounded border border-slate-300 py-1.5 pl-8 pr-3 text-sm focus:outline-none"
-            />
-          </div>
-          <select
-            value={filters.is_active}
-            onChange={(e) => setFilters({ ...filters, is_active: e.target.value })}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">All status</option>
-            <option value="true">Active</option>
-            <option value="false">Inactive</option>
-          </select>
-          <select
-            value={filters.is_verified}
-            onChange={(e) => setFilters({ ...filters, is_verified: e.target.value })}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">All verified</option>
-            <option value="true">Verified</option>
-            <option value="false">Unverified</option>
-          </select>
-          <button onClick={() => load(1)} className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
-            <RefreshCw className="h-4 w-4" /> Apply
+    <AppLayout title="User Management" subtitle="Manage platform users and access">
+      {/* Filters */}
+      <div className="card p-4 mb-4 flex flex-wrap items-center gap-3">
+        <select className="input w-40" value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
+          <option value="">All Roles</option>
+          {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
+        </select>
+        <select className="input w-40" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+          <option value="">All Statuses</option>
+          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button onClick={loadUsers} className="btn-secondary flex items-center gap-2">
+          <RefreshCw className="w-4 h-4" /> Refresh
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => setShowBulk(true)} className="btn-secondary flex items-center gap-2">
+            <Upload className="w-4 h-4" /> Bulk Upload
+          </button>
+          <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2">
+            <UserPlus className="w-4 h-4" /> Create User
           </button>
         </div>
-
-        {/* Table */}
-        <div className="overflow-x-auto rounded border bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50">
-              <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Verified</th>
-                <th className="px-4 py-3">Last Login</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
-              ) : data.users.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No users found.</td></tr>
-              ) : (
-                data.users.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      {user.first_name} {user.last_name}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{user.email}</td>
-                    <td className="px-4 py-3 text-slate-500">{user.role ?? "—"}</td>
-                    <td className="px-4 py-3"><StatusBadge user={user} /></td>
-                    <td className="px-4 py-3">
-                      {user.is_verified
-                        ? <CheckCircle className="h-4 w-4 text-emerald-500" />
-                        : <MailWarning className="h-4 w-4 text-yellow-500" />}
-                    </td>
-                    <td className="px-4 py-3 text-slate-400 text-xs">
-                      {user.last_login ? new Date(user.last_login).toLocaleDateString() : "Never"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => setSelectedUser(user)} className="rounded border px-2 py-1 text-xs hover:bg-slate-100" title="View">
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        {user.is_active ? (
-                          <button onClick={() => handleAction("deactivate", user.id)} className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50" title="Deactivate">
-                            <XCircle className="h-3.5 w-3.5" />
-                          </button>
-                        ) : (
-                          <button onClick={() => handleAction("activate", user.id)} className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50" title="Activate">
-                            <CheckCircle className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        {user.locked_until && new Date(user.locked_until) > new Date() && (
-                          <button onClick={() => handleAction("unlock", user.id)} className="rounded border border-yellow-300 px-2 py-1 text-xs text-yellow-600 hover:bg-yellow-50" title="Unlock">
-                            <Lock className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="mt-4 flex items-center gap-3 text-sm text-slate-500">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-white">Previous</button>
-          <span>Page {page} · {data.total_count} total</span>
-          <button onClick={() => setPage(page + 1)} disabled={page * data.page_size >= data.total_count} className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-white">Next</button>
-        </div>
       </div>
-    </main>
+
+      {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
+
+      <DataTable
+        columns={columns}
+        data={users}
+        loading={loading}
+        emptyMessage="No users found"
+        rowKey="id"
+        searchable
+      />
+
+      {/* Create User Modal */}
+      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Create New User" size="md"
+        footer={
+          <>
+            <button onClick={() => setShowCreate(false)} className="btn-secondary">Cancel</button>
+            <button onClick={handleCreate} disabled={creating} className="btn-primary">
+              {creating ? 'Creating…' : 'Create User'}
+            </button>
+          </>
+        }
+      >
+        <form onSubmit={handleCreate} className="space-y-4">
+          {formError && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{formError}</div>}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+              <input className="input" value={form.first_name} onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} placeholder="John" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+              <input className="input" value={form.last_name} onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} placeholder="Doe" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input className="input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="john@example.com" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+            <select className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+              {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+            <select className="input" value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))}>
+              <option value="">Select department</option>
+              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Bulk Upload Modal */}
+      <Modal isOpen={showBulk} onClose={() => setShowBulk(false)} title="Bulk Upload Users" size="md"
+        footer={
+          <>
+            <button onClick={() => setShowBulk(false)} className="btn-secondary">Cancel</button>
+            <button onClick={handleBulkUpload} disabled={!bulkFile || bulkUploading} className="btn-primary">
+              {bulkUploading ? 'Uploading…' : 'Upload'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">Upload an Excel (.xlsx) file with columns: first_name, last_name, email, role, department.</p>
+          <div
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setBulkFile(f); }}
+            className="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+            onClick={() => document.getElementById('bulk-file-input').click()}
+          >
+            <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm font-medium text-gray-700">{bulkFile ? bulkFile.name : 'Drag & drop or click to select Excel file'}</p>
+            <p className="text-xs text-gray-400 mt-1">.xlsx files only</p>
+            <input id="bulk-file-input" type="file" accept=".xlsx,.xls" className="hidden" onChange={e => setBulkFile(e.target.files[0])} />
+          </div>
+          <button
+            onClick={async () => {
+              const res = await superAdminApi.downloadBulkTemplate();
+              if (res.ok) { const url = URL.createObjectURL(res.blob); const a = document.createElement('a'); a.href = url; a.download = 'user_template.xlsx'; a.click(); }
+            }}
+            className="btn-secondary w-full text-sm"
+          >
+            Download Template
+          </button>
+        </div>
+      </Modal>
+    </AppLayout>
   );
 }

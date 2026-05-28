@@ -1,176 +1,157 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { ShieldCheck, RefreshCw, TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
-import { monitoringApi } from "../services/monitoringApi.js";
+import React, { useState, useEffect } from 'react';
+import { Brain, TrendingUp, AlertTriangle, ThumbsDown, Download } from 'lucide-react';
+import {
+  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
+import AppLayout from '../components/Layout/AppLayout.jsx';
+import StatsCard from '../components/UI/StatsCard.jsx';
+import { monitoringApi } from '../services/monitoringApi.js';
 
-const TRUST_COLORS = {
-  high: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", badge: "bg-emerald-100 text-emerald-700" },
-  medium: { bg: "bg-yellow-50 border-yellow-200", text: "text-yellow-700", badge: "bg-yellow-100 text-yellow-700" },
-  low: { bg: "bg-red-50 border-red-200", text: "text-red-700", badge: "bg-red-100 text-red-700" },
-};
-
-function ScoreBar({ label, value, max = 1.0, invert = false }) {
-  const pct = Math.min(100, (value / max) * 100);
-  const color = invert
-    ? value > 0.6 ? "bg-red-400" : value > 0.3 ? "bg-yellow-400" : "bg-emerald-400"
-    : value > 0.7 ? "bg-emerald-400" : value > 0.4 ? "bg-yellow-400" : "bg-red-400";
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-sm">
-        <span className="text-slate-600">{label}</span>
-        <span className="font-medium text-slate-900">{(value * 100).toFixed(1)}%</span>
-      </div>
-      <div className="h-2 w-full rounded bg-slate-100">
-        <div className={`h-2 rounded ${color} transition-all`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
+function trustLevel(score) {
+  if (score >= 0.85) return { label: 'Excellent', color: 'text-green-600', bg: 'bg-green-50 border-green-200' };
+  if (score >= 0.70) return { label: 'Good', color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200' };
+  if (score >= 0.55) return { label: 'Fair', color: 'text-yellow-600', bg: 'bg-yellow-50 border-yellow-200' };
+  return { label: 'Poor', color: 'text-red-600', bg: 'bg-red-50 border-red-200' };
 }
 
 export default function AITrustReport() {
   const [report, setReport] = useState(null);
-  const [trend, setTrend] = useState([]);
-  const [lowFlags, setLowFlags] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
 
-  const load = async () => {
+  async function load() {
     setLoading(true);
-    const [rRes, qRes, fRes] = await Promise.all([
-      monitoringApi.getAITrustReport(),
-      monitoringApi.getAIQuality(30),
-      monitoringApi.getAlerts("high"),
-    ]);
-    if (rRes.ok) setReport(rRes.data);
-    if (qRes.ok) setTrend(qRes.data?.response_quality_trend || []);
-    if (fRes.ok) setLowFlags((fRes.data || []).filter(a => a.alert_type?.includes("confidence") || a.alert_type?.includes("hallucination")));
+    const res = await monitoringApi.getAITrustReport();
+    if (res.ok) setReport(res.data);
     setLoading(false);
-  };
+  }
 
   useEffect(() => { load(); }, []);
 
-  const tc = TRUST_COLORS[report?.trust_level] || TRUST_COLORS.medium;
+  async function handleGenerate() {
+    setGenerating(true);
+    const res = await monitoringApi.getAITrustReport();
+    if (res.ok) setReport(res.data);
+    setGenerating(false);
+  }
+
+  const r = report || {};
+  const avgConfidence = r.avg_confidence_score ?? 0;
+  const avgHallucination = r.avg_hallucination_risk ?? 0;
+  const totalResponses = r.total_responses ?? 0;
+  const rejectionRate = r.rejection_rate ?? 0;
+  const confidenceTrend = r.confidence_trend || [];
+  const hallucinationTrend = r.hallucination_trend || [];
+  const problematicDocs = r.problematic_documents || [];
+  const reportedHallucinations = r.reported_hallucinations || [];
+  const trust = trustLevel(avgConfidence);
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6">
-      <div className="mx-auto max-w-5xl">
-        <header className="mb-6 flex flex-col gap-3 border-b pb-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <Link to="/monitoring" className="text-sm text-slate-500 hover:text-slate-700">← Monitoring</Link>
-            <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold">
-              <ShieldCheck className="h-6 w-6 text-slate-600" /> AI Trust Report
-            </h1>
-            <p className="text-sm text-slate-500">Reliability and hallucination risk metrics for your AI knowledge engine</p>
-          </div>
-          <button onClick={load} className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm hover:bg-white">
-            <RefreshCw className="h-4 w-4" /> Refresh
-          </button>
-        </header>
-
-        {loading ? (
-          <p className="text-sm text-slate-400">Loading AI trust data…</p>
-        ) : (
-          <>
-            {/* Trust level banner */}
-            {report && (
-              <div className={`mb-6 rounded border p-5 ${tc.bg}`}>
-                <div className="flex items-center gap-3">
-                  {report.trust_level === "high" ? (
-                    <CheckCircle className={`h-6 w-6 ${tc.text}`} />
-                  ) : (
-                    <AlertTriangle className={`h-6 w-6 ${tc.text}`} />
-                  )}
-                  <div>
-                    <p className={`font-semibold capitalize ${tc.text}`}>
-                      AI Trust Level: {report.trust_level}
-                    </p>
-                    <p className="text-sm text-slate-600 mt-0.5">
-                      Based on {report.total_responses} total responses over the last 30 days
-                    </p>
-                  </div>
-                  <span className={`ml-auto rounded px-3 py-1 text-sm font-medium ${tc.badge}`}>
-                    {report.rejection_rate_percent}% rejected
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Key metrics */}
-            {report && (
-              <div className="mb-6 grid gap-4 md:grid-cols-2">
-                <div className="rounded border bg-white p-5 space-y-4">
-                  <h2 className="font-semibold text-slate-800">Quality Scores</h2>
-                  <ScoreBar label="Average Confidence Score" value={report.avg_confidence_score} />
-                  <ScoreBar label="Hallucination Risk" value={report.avg_hallucination_risk} invert />
-                  <ScoreBar label="Acceptance Rate" value={(report.total_responses - report.rejected_responses) / Math.max(1, report.total_responses)} />
-                </div>
-                <div className="rounded border bg-white p-5 space-y-3">
-                  <h2 className="font-semibold text-slate-800">Response Summary</h2>
-                  {[
-                    ["Total AI Responses", report.total_responses],
-                    ["Accepted Responses", report.total_responses - report.rejected_responses],
-                    ["Rejected Responses", report.rejected_responses],
-                    ["Rejection Rate", `${report.rejection_rate_percent}%`],
-                  ].map(([label, value]) => (
-                    <div key={label} className="flex justify-between text-sm">
-                      <span className="text-slate-500">{label}</span>
-                      <span className="font-medium text-slate-900">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* AI-generated trust report text */}
-            {report?.report_text && (
-              <div className="mb-6 rounded border bg-white p-5">
-                <h2 className="mb-3 font-semibold text-slate-800">AI Trust Analysis</h2>
-                <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-line">{report.report_text}</p>
-                {report.generated_at && (
-                  <p className="mt-3 text-xs text-slate-400">
-                    Generated at {new Date(report.generated_at).toLocaleString()}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Low confidence flags */}
-            {lowFlags.length > 0 && (
-              <div className="mb-6 rounded border bg-white p-5">
-                <h2 className="mb-3 font-semibold text-slate-800">Low Confidence Alerts</h2>
-                <ul className="divide-y divide-slate-100">
-                  {lowFlags.map((flag) => (
-                    <li key={flag.id} className="py-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-slate-700">{flag.title}</span>
-                        <span className="text-xs text-slate-400">{new Date(flag.created_at).toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-xs text-slate-400">{flag.affected_service}</p>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Problematic documents */}
-            {(report?.problematic_documents || []).length > 0 && (
-              <div className="rounded border bg-white p-5">
-                <h2 className="mb-3 font-semibold text-slate-800">Problematic Documents</h2>
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b"><th className="py-2 text-left">Document</th><th className="py-2 text-right">Flags</th></tr></thead>
-                  <tbody>
-                    {report.problematic_documents.map((doc, i) => (
-                      <tr key={i} className="border-b">
-                        <td className="py-2 text-slate-700">{doc.document_title || doc.document_id}</td>
-                        <td className="py-2 text-right text-red-600">{doc.flag_count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
+    <AppLayout
+      title="AI Trust Report"
+      subtitle="AI response quality and reliability analytics"
+      actions={
+        <button onClick={handleGenerate} disabled={generating} className="btn-primary flex items-center gap-2">
+          <Download className="w-4 h-4" />
+          {generating ? 'Generating…' : 'Generate Report'}
+        </button>
+      }
+    >
+      <div className={`card p-5 mb-6 border-2 flex items-center gap-4 ${trust.bg}`}>
+        <Brain className={`w-10 h-10 ${trust.color}`} />
+        <div>
+          <p className="text-sm font-medium text-gray-600">Overall AI Trust Level</p>
+          <p className={`text-2xl font-bold ${trust.color}`}>{trust.label}</p>
+        </div>
+        <div className="ml-auto text-right">
+          <p className="text-sm text-gray-500">Based on confidence score</p>
+          <p className={`text-3xl font-bold ${trust.color}`}>{(avgConfidence * 100).toFixed(0)}%</p>
+        </div>
       </div>
-    </main>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatsCard title="Avg Confidence Score" value={loading ? '…' : `${(avgConfidence * 100).toFixed(1)}%`} icon={Brain} color="blue" />
+        <StatsCard title="Hallucination Risk" value={loading ? '…' : `${(avgHallucination * 100).toFixed(1)}%`} icon={AlertTriangle} color="red" />
+        <StatsCard title="Total Responses" value={loading ? '…' : totalResponses} icon={TrendingUp} color="green" />
+        <StatsCard title="Rejection Rate %" value={loading ? '…' : `${(rejectionRate * 100).toFixed(1)}%`} icon={ThumbsDown} color="yellow" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="card p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">Confidence Score (30 days)</h2>
+          {confidenceTrend.length === 0 ? (
+            <div className="h-48 flex items-center justify-center text-gray-400 text-sm">No trend data available</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={confidenceTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis domain={[0, 1]} tickFormatter={v => `${(v * 100).toFixed(0)}%`} tick={{ fontSize: 10 }} />
+                <Tooltip formatter={v => [`${(v * 100).toFixed(1)}%`, 'Confidence']} />
+                <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div className="card p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">Hallucination Risk (30 days)</h2>
+          {hallucinationTrend.length === 0 ? (
+            <div className="h-48 flex items-center justify-center text-gray-400 text-sm">No trend data available</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={hallucinationTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis domain={[0, 1]} tickFormatter={v => `${(v * 100).toFixed(0)}%`} tick={{ fontSize: 10 }} />
+                <Tooltip formatter={v => [`${(v * 100).toFixed(1)}%`, 'Risk']} />
+                <Area type="monotone" dataKey="value" stroke="#ef4444" fill="#fee2e2" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="card p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">Most Problematic Documents</h2>
+          {problematicDocs.length === 0 ? (
+            <p className="text-center text-gray-400 text-sm py-8">No problematic documents found</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead><tr><th>Document</th><th>Avg Confidence</th><th>Hallucinations</th><th>Status</th></tr></thead>
+                <tbody>
+                  {problematicDocs.map((doc, i) => (
+                    <tr key={doc.id || i}>
+                      <td className="font-medium text-gray-900 max-w-xs truncate">{doc.title || doc.document_title || '—'}</td>
+                      <td>{((doc.avg_confidence ?? 0) * 100).toFixed(0)}%</td>
+                      <td>{doc.hallucination_count ?? 0}</td>
+                      <td><span className={doc.hallucination_count > 5 ? 'badge-red' : 'badge-yellow'}>{doc.hallucination_count > 5 ? 'High Risk' : 'Monitor'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="card p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">Reported Hallucinations</h2>
+          {reportedHallucinations.length === 0 ? (
+            <p className="text-center text-gray-400 text-sm py-8">No reported hallucinations</p>
+          ) : (
+            <div className="space-y-3">
+              {reportedHallucinations.map((h, i) => (
+                <div key={h.id || i} className="p-3 bg-red-50 rounded-lg border border-red-100">
+                  <p className="text-sm font-medium text-red-800">{h.reported_issue || h.description || 'Reported issue'}</p>
+                  <p className="text-xs text-red-500 mt-1">{h.user_email || h.user || 'Anonymous'} · {h.created_at ? new Date(h.created_at).toLocaleDateString() : ''}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </AppLayout>
   );
 }

@@ -1,172 +1,125 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import {
-  Users, Building2, ShieldCheck, UserCheck, UserX,
-  AlertTriangle, MailWarning, PlusCircle, Upload,
-  ClipboardList, BarChart3, RefreshCw
-} from "lucide-react";
-import { superAdminApi } from "../services/superAdminApi.js";
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Building2, Users, UserCheck, UserX, Mail, Lock, Plus, Upload, Shield } from 'lucide-react';
+import AppLayout from '../components/Layout/AppLayout.jsx';
+import StatsCard from '../components/UI/StatsCard.jsx';
+import { superAdminApi } from '../services/superAdminApi.js';
 
-function StatCard({ icon: Icon, label, value, color = "slate" }) {
-  const colors = {
-    slate: "bg-white border-slate-200 text-slate-900",
-    green: "bg-emerald-50 border-emerald-200 text-emerald-800",
-    red: "bg-red-50 border-red-200 text-red-800",
-    yellow: "bg-yellow-50 border-yellow-200 text-yellow-800",
-    blue: "bg-blue-50 border-blue-200 text-blue-800",
-  };
-  return (
-    <div className={`rounded border p-4 shadow-sm ${colors[color]}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium opacity-75">{label}</span>
-        <Icon className="h-5 w-5 opacity-60" />
-      </div>
-      <div className="mt-2 text-2xl font-semibold">{value ?? "—"}</div>
-    </div>
-  );
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 export default function SuperAdminDashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
+  const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
-    setLoading(true);
-    const res = await superAdminApi.getDashboardStats();
-    if (res.ok) setStats(res.data);
-    setLoading(false);
-  };
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [statsRes, activityRes] = await Promise.all([
+        superAdminApi.getDashboardStats(),
+        superAdminApi.getRecentActivity(),
+      ]);
+      if (statsRes.ok) setStats(statsRes.data);
+      if (activityRes.ok) setActivity((activityRes.data?.activities || activityRes.data || []).slice(0, 5));
+      setLoading(false);
+    }
+    load();
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  const s = stats || {};
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6">
-      <div className="mx-auto max-w-7xl">
-        {/* Header */}
-        <header className="mb-6 flex flex-col gap-3 border-b pb-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Super Admin</h1>
-            <p className="text-sm text-slate-500">Platform-wide governance and user management.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <nav className="flex flex-wrap gap-2 text-sm">
-              {[
-                { label: "Users", to: "/superadmin/users" },
-                { label: "Organizations", to: "/super-admin" },
-                { label: "Roles", to: "/super-admin" },
-                { label: "Audit Logs", to: "/super-admin" },
-                { label: "Monitoring", to: "/super-admin" },
-              ].map(({ label, to }) => (
-                <Link key={label} to={to} className="rounded border px-3 py-1.5 text-slate-600 hover:bg-white">
-                  {label}
-                </Link>
-              ))}
-            </nav>
-            <button onClick={load} className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm hover:bg-white">
-              <RefreshCw className="h-4 w-4" />
+    <AppLayout title="Super Admin" subtitle="Platform-wide governance and user management">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatsCard title="Organizations" value={loading ? '…' : (s.total_organizations ?? 0)} icon={Building2} color="blue" />
+        <StatsCard title="Total Users" value={loading ? '…' : (s.total_users ?? 0)} icon={Users} color="indigo" />
+        <StatsCard title="Active Users" value={loading ? '…' : (s.active_users ?? 0)} icon={UserCheck} color="green" />
+        <StatsCard title="Inactive Users" value={loading ? '…' : (s.inactive_users ?? 0)} icon={UserX} color="yellow" />
+        <StatsCard title="Unverified" value={loading ? '…' : (s.unverified_users ?? 0)} icon={Mail} color="yellow" />
+        <StatsCard title="Locked Accounts" value={loading ? '…' : (s.locked_users ?? 0)} icon={Lock} color="red" />
+        <StatsCard title="Created Today" value={loading ? '…' : (s.created_today ?? 0)} icon={Plus} color="green" />
+        <StatsCard title="Created This Month" value={loading ? '…' : (s.created_this_month ?? 0)} icon={Users} color="purple" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Quick Actions */}
+        <div className="card p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">Quick Actions</h2>
+          <div className="flex flex-col gap-2">
+            <button onClick={() => navigate('/superadmin/users')} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Create User
+            </button>
+            <button onClick={() => navigate('/superadmin/users')} className="btn-secondary flex items-center gap-2">
+              <Upload className="w-4 h-4" /> Bulk Upload
+            </button>
+            <button onClick={() => navigate('/superadmin/users')} className="btn-secondary flex items-center gap-2">
+              <Users className="w-4 h-4" /> View All Users
+            </button>
+            <button onClick={() => navigate('/superadmin/organizations')} className="btn-secondary flex items-center gap-2">
+              <Building2 className="w-4 h-4" /> Organizations
+            </button>
+            <button onClick={() => navigate('/superadmin/roles')} className="btn-secondary flex items-center gap-2">
+              <Shield className="w-4 h-4" /> Roles
             </button>
           </div>
-        </header>
+        </div>
 
-        {/* Stats grid */}
-        {loading ? (
-          <p className="text-sm text-slate-400">Loading stats…</p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            <StatCard icon={Building2} label="Organizations" value={stats?.total_organizations} />
-            <StatCard icon={Users} label="Total Users" value={stats?.total_users} />
-            <StatCard icon={UserCheck} label="Active Users" value={stats?.active_users} color="green" />
-            <StatCard icon={UserX} label="Inactive Users" value={stats?.inactive_users} color="red" />
-            <StatCard icon={MailWarning} label="Unverified" value={stats?.unverified_users} color="yellow" />
-            <StatCard icon={AlertTriangle} label="Locked Accounts" value={stats?.locked_accounts} color="red" />
-            <StatCard icon={PlusCircle} label="Created Today" value={stats?.users_created_today} color="blue" />
-            <StatCard icon={BarChart3} label="Created This Month" value={stats?.users_created_this_month} color="blue" />
-          </div>
-        )}
-
-        {/* Quick actions */}
-        <section className="mt-8">
-          <h2 className="mb-4 font-semibold text-slate-700">Quick Actions</h2>
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-            <Link
-              to="/superadmin/users"
-              className="flex items-center gap-3 rounded border bg-white p-4 shadow-sm hover:border-slate-400"
-            >
-              <PlusCircle className="h-6 w-6 text-slate-600" />
-              <div>
-                <p className="font-medium text-slate-900">Create User</p>
-                <p className="text-xs text-slate-500">Add a new platform user</p>
+        {/* System Governance */}
+        <div className="card p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">System Governance</h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Lock className="w-4 h-4 text-red-600" />
+                <span className="text-sm font-medium text-red-700">Locked Accounts</span>
               </div>
-            </Link>
-            <Link
-              to="/superadmin/users"
-              className="flex items-center gap-3 rounded border bg-white p-4 shadow-sm hover:border-slate-400"
-            >
-              <Upload className="h-6 w-6 text-slate-600" />
-              <div>
-                <p className="font-medium text-slate-900">Bulk Upload</p>
-                <p className="text-xs text-slate-500">Import users from Excel</p>
-              </div>
-            </Link>
-            <Link
-              to="/superadmin/users"
-              className="flex items-center gap-3 rounded border bg-white p-4 shadow-sm hover:border-slate-400"
-            >
-              <Users className="h-6 w-6 text-slate-600" />
-              <div>
-                <p className="font-medium text-slate-900">View All Users</p>
-                <p className="text-xs text-slate-500">Browse and manage users</p>
-              </div>
-            </Link>
-            <Link
-              to="/super-admin"
-              className="flex items-center gap-3 rounded border bg-white p-4 shadow-sm hover:border-slate-400"
-            >
-              <Building2 className="h-6 w-6 text-slate-600" />
-              <div>
-                <p className="font-medium text-slate-900">Organizations</p>
-                <p className="text-xs text-slate-500">Tenant management</p>
-              </div>
-            </Link>
-          </div>
-        </section>
-
-        {/* System governance */}
-        <section className="mt-8">
-          <h2 className="mb-4 font-semibold text-slate-700">System Governance</h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded border bg-white p-5 shadow-sm">
-              <div className="mb-3 flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-emerald-500" />
-                <h3 className="font-semibold text-slate-800">Security Status</h3>
-              </div>
-              <ul className="space-y-2 text-sm text-slate-600">
-                <li className="flex justify-between"><span>Locked accounts</span><span className="font-medium text-red-600">{stats?.locked_accounts ?? "—"}</span></li>
-                <li className="flex justify-between"><span>Unverified users</span><span className="font-medium text-yellow-600">{stats?.unverified_users ?? "—"}</span></li>
-                <li className="flex justify-between"><span>Inactive users</span><span className="font-medium text-slate-500">{stats?.inactive_users ?? "—"}</span></li>
-              </ul>
+              <span className="text-lg font-bold text-red-700">{loading ? '…' : (s.locked_users ?? 0)}</span>
             </div>
-            <div className="rounded border bg-white p-5 shadow-sm">
-              <div className="mb-3 flex items-center gap-2">
-                <ClipboardList className="h-5 w-5 text-blue-500" />
-                <h3 className="font-semibold text-slate-800">Recent Activity</h3>
+            <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-yellow-600" />
+                <span className="text-sm font-medium text-yellow-700">Unverified Users</span>
               </div>
-              {(stats?.recent_user_activity || []).length === 0 ? (
-                <p className="text-sm text-slate-400">No recent activity.</p>
-              ) : (
-                <ul className="divide-y divide-slate-100">
-                  {(stats?.recent_user_activity || []).slice(0, 5).map((entry) => (
-                    <li key={entry.id} className="flex items-center justify-between py-1.5 text-xs text-slate-600">
-                      <span className="font-mono">{entry.action}</span>
-                      <span className="text-slate-400">{new Date(entry.created_at).toLocaleString()}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <span className="text-lg font-bold text-yellow-700">{loading ? '…' : (s.unverified_users ?? 0)}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <UserX className="w-4 h-4 text-gray-600" />
+                <span className="text-sm font-medium text-gray-700">Inactive Users</span>
+              </div>
+              <span className="text-lg font-bold text-gray-700">{loading ? '…' : (s.inactive_users ?? 0)}</span>
             </div>
           </div>
-        </section>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="card p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">Recent Activity</h2>
+          {activity.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">No recent activity</p>
+          ) : (
+            <div className="space-y-3">
+              {activity.map((item, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-800 truncate">{item.description || item.action || 'Action performed'}</p>
+                    <p className="text-xs text-gray-400">{item.user_email || item.user || ''} · {timeAgo(item.timestamp || item.created_at)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </main>
+    </AppLayout>
   );
 }

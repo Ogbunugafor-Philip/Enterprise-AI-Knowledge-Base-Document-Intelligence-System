@@ -67,4 +67,28 @@ export const superAdminApi = {
 
   downloadBulkTemplate: () =>
     requestBlob("/api/v1/superadmin/users/bulk-upload/template"),
+
+  getOrganizations: (params = {}) =>
+    request(`/api/v1/superadmin/organizations?${new URLSearchParams(params)}`, { headers: headers() }),
+
+  createOrganization: (body) =>
+    request("/api/v1/superadmin/organizations", { method: "POST", headers: headers(), body: JSON.stringify(body) }),
+
+  updateOrganization: (id, body) =>
+    request(`/api/v1/superadmin/organizations/${id}`, { method: "PUT", headers: headers(), body: JSON.stringify(body) }),
+
+  deleteOrganization: (id) =>
+    request(`/api/v1/superadmin/organizations/${id}`, { method: "DELETE", headers: headers() }),
+
+  getRoles: () =>
+    request("/api/v1/superadmin/roles", { headers: headers() }),
+
+  createRole: (body) =>
+    request("/api/v1/superadmin/roles", { method: "POST", headers: headers(), body: JSON.stringify(body) }),
+
+  getRolePermissions: (id) =>
+    request(`/api/v1/superadmin/roles/${id}/permissions`, { headers: headers() }),
+
+  getRecentActivity: () =>
+    request("/api/v1/superadmin/activity/recent", { headers: headers() }),
 };
