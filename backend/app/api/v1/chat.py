@@ -26,7 +26,7 @@ from app.schemas.chat import (
     OnboardingStepRequest,
     SampleQuestionsResponse,
 )
-from app.services import ai_guard_service
+from app.services import ai_guard_service, rag_service
 from app.services.chat_service import (
     complete_onboarding,
     complete_onboarding_step,
@@ -144,49 +144,44 @@ async def ask_question(
         session = await create_chat_session(db, current_user, payload.question[:80])
 
     await save_user_message(db, current_user, session, payload.question)
-    retrieved_chunks: list[dict] = []
-    eligible_sources = await ai_guard_service.filter_eligible_documents(db, current_user, retrieved_chunks)
-    blocked, fallback = ai_guard_service.enforce_no_source_no_answer(eligible_sources)
 
-    if blocked:
-        answer = fallback or ai_guard_service.get_fallback_message()
-        confidence_score = 0.0
-        retrieval_score = 0.0
-        hallucination_risk_score = 1.0
-        response_rejected = True
-    else:
-        answer = "Based on the approved source documents, here is a grounded answer placeholder for Phase 9 RAG."
-        retrieval_score = ai_guard_service.calculate_retrieval_score(eligible_sources)
-        confidence_score = ai_guard_service.calculate_confidence_score(eligible_sources, answer)
-        hallucination_risk_score = ai_guard_service.calculate_hallucination_risk(confidence_score, retrieval_score)
-        response_rejected = ai_guard_service.should_reject_response(confidence_score, hallucination_risk_score)
-        if response_rejected:
-            answer = ai_guard_service.get_fallback_message()
-            fallback = answer
+    rag_result = await rag_service.generate_rag_response(
+        question=payload.question,
+        user_id=current_user.id,
+        organization_id=current_user.organization_id,
+        session_id=session.id,
+        db=db,
+    )
 
+    source_dicts = [s.model_dump() for s in rag_result.source_documents]
     ai_message = await save_ai_response(
         db,
         current_user,
         session,
-        answer,
-        eligible_sources,
-        confidence_score,
-        retrieval_score,
-        hallucination_risk_score,
-        response_rejected,
+        rag_result.answer,
+        source_dicts,
+        rag_result.response_confidence,
+        rag_result.retrieval_confidence,
+        rag_result.hallucination_risk,
+        rag_result.response_rejected,
     )
-    await track_ai_usage(db, current_user, response_time_ms=0, token_usage={"prompt_tokens": 0, "completion_tokens": 0})
+    await track_ai_usage(
+        db,
+        current_user,
+        response_time_ms=rag_result.processing_time_ms,
+        token_usage=rag_result.token_usage,
+    )
     await db.commit()
     await db.refresh(ai_message)
     return AskQuestionResponse(
         message_id=ai_message.id,
-        answer=answer,
-        source_documents=eligible_sources,
-        confidence_score=confidence_score,
-        retrieval_score=retrieval_score,
-        hallucination_risk_score=hallucination_risk_score,
-        response_rejected=response_rejected,
-        fallback_message=fallback,
+        answer=rag_result.answer,
+        source_documents=source_dicts,
+        confidence_score=rag_result.response_confidence,
+        retrieval_score=rag_result.retrieval_confidence,
+        hallucination_risk_score=rag_result.hallucination_risk,
+        response_rejected=rag_result.response_rejected,
+        fallback_message=rag_result.fallback_message,
     )
 
 
