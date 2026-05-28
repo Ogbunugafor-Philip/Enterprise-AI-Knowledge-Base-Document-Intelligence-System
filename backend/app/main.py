@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.backup import router as backup_router
 from app.api.v1.admin.access_rules import router as admin_access_rules_router
 from app.api.v1.monitoring import router as monitoring_router
 from app.api.v1.rag_analytics import router as rag_analytics_router
@@ -33,6 +34,7 @@ from app.api.v1.users import router as users_router
 from app.core.cors_config import get_cors_settings
 from app.core.data_isolation import IsolationViolationError
 from app.core.file_storage import ensure_upload_directory
+from app.services.backup_service import ensure_backup_directories
 from app.middleware.auth_middleware import JWTAuthenticationMiddleware, PasswordExpiryMiddleware
 from app.middleware.monitoring_middleware import MonitoringMiddleware
 from app.middleware.rate_limit_middleware import RateLimitMiddleware
@@ -65,6 +67,7 @@ async def tenancy_status() -> dict[str, str]:
 async def lifespan(app: FastAPI):
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     ensure_upload_directory()
+    ensure_backup_directories()
     logger.info("Starting Ent_RAG API in %s mode", os.getenv("ENVIRONMENT", "development"))
     yield
     logger.info("Stopping Ent_RAG API")
@@ -92,6 +95,12 @@ app.add_middleware(SQLInjectionProtectionMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
+
+@app.get("/health", tags=["health"])
+async def root_health_check() -> dict[str, str]:
+    return await health_check()
+
+
 app.include_router(api_router)
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(setup_router, prefix="/api/v1")
@@ -109,6 +118,7 @@ app.include_router(rag_analytics_router, prefix="/api/v1")
 app.include_router(monitoring_router, prefix="/api/v1")
 app.include_router(compliance_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
+app.include_router(backup_router, prefix="/api/v1")
 
 
 @app.exception_handler(IsolationViolationError)

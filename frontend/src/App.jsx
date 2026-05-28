@@ -6,6 +6,7 @@ import HelpSection from "./components/HelpSection.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import AITrustReport from "./pages/AITrustReport.jsx";
 import AuditLogs from "./pages/AuditLogs.jsx";
+import BackupManagement from "./pages/BackupManagement.jsx";
 import AlertsPanel from "./pages/AlertsPanel.jsx";
 import ApprovalQueue from "./pages/ApprovalQueue.jsx";
 import DebuggingAssistant from "./pages/DebuggingAssistant.jsx";
@@ -128,6 +129,7 @@ export default function App() {
       <Route path="/compliance/reports" element={<ComplianceReports />} />
       <Route path="/compliance/retention" element={<DataRetentionSettings />} />
       <Route path="/security" element={<SecurityDashboard />} />
+      <Route path="/backup" element={<BackupManagement />} />
       <Route path="/superadmin/dashboard" element={<SuperAdminDashboard />} />
       <Route path="/superadmin/users" element={<UserManagement />} />
       <Route

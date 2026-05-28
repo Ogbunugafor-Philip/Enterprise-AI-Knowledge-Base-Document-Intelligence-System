@@ -15,7 +15,12 @@ services:
       redis:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=10)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: always
     deploy:
       resources:
@@ -26,6 +31,11 @@ services:
           memory: 512M
     networks:
       - ent_rag_network
+    logging: &default_logging
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"
 
   frontend:
     build:
@@ -33,7 +43,8 @@ services:
     environment:
       NODE_ENV: production
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -44,6 +55,7 @@ services:
           memory: 256M
     networks:
       - ent_rag_network
+    logging: *default_logging
 
   postgres:
     image: postgres:15
@@ -57,19 +69,20 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
     restart: always
     deploy:
       resources:
         limits:
-          cpus: "1.00"
+          cpus: "2.00"
           memory: 2G
         reservations:
           memory: 1G
     networks:
       - ent_rag_network
+    logging: *default_logging
 
   redis:
     image: redis:7-alpine
@@ -78,9 +91,9 @@ services:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
-      retries: 5
+      retries: 3
     restart: always
     deploy:
       resources:
@@ -91,21 +104,28 @@ services:
           memory: 256M
     networks:
       - ent_rag_network
+    logging: *default_logging
 
   qdrant:
     image: qdrant/qdrant
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: always
     deploy:
       resources:
         limits:
-          cpus: "1.00"
+          cpus: "2.00"
           memory: 2G
         reservations:
           memory: 1G
     networks:
       - ent_rag_network
+    logging: *default_logging
 
   celery_worker:
     build:
@@ -123,6 +143,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -133,6 +155,7 @@ services:
           memory: 512M
     networks:
       - ent_rag_network
+    logging: *default_logging
 
   nginx:
     build:
@@ -141,8 +164,10 @@ services:
       - "80:80"
       - "443:443"
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
     restart: always
     deploy:
       resources:
@@ -153,6 +178,7 @@ services:
           memory: 128M
     networks:
       - ent_rag_network
+    logging: *default_logging
 
 volumes:
   postgres_data:

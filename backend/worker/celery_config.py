@@ -15,6 +15,7 @@ celery_app = Celery(
         "worker.tasks.embedding_generation",
         "worker.tasks.monitoring",
         "worker.tasks.compliance",
+        "worker.tasks.backup",
     ],
 )
 
@@ -34,6 +35,7 @@ celery_app.conf.update(
         "embedding_generation.*": {"queue": "embedding_generation"},
         "monitoring.*": {"queue": "monitoring"},
         "compliance.*": {"queue": "compliance"},
+        "backup.*": {"queue": "backup"},
     },
     task_default_queue="default",
     task_default_retry_delay=30,
@@ -68,6 +70,18 @@ celery_app.conf.update(
         "compliance-audit-integrity-check": {
             "task": "compliance.run_audit_integrity_check",
             "schedule": crontab(hour=1, minute=0, day_of_week="sun"),
+        },
+        "daily-full-backup": {
+            "task": "backup.daily_full_backup",
+            "schedule": crontab(hour=1, minute=0),
+        },
+        "weekly-backup-integrity-check": {
+            "task": "backup.weekly_integrity_check",
+            "schedule": crontab(hour=2, minute=0, day_of_week="sun"),
+        },
+        "monthly-backup-cleanup": {
+            "task": "backup.monthly_cleanup",
+            "schedule": crontab(hour=3, minute=0, day_of_month="1"),
         },
     },
 )
