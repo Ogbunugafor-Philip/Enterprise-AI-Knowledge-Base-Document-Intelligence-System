@@ -27,13 +27,21 @@ from app.api.v1.chat import router as chat_router
 from app.api.v1.compliance import router as compliance_router
 from app.api.v1.departments import router as departments_router
 from app.api.v1.roles import router as roles_router
+from app.api.v1.security import router as security_router
 from app.api.v1.setup import router as setup_router
 from app.api.v1.users import router as users_router
+from app.core.cors_config import get_cors_settings
 from app.core.data_isolation import IsolationViolationError
 from app.core.file_storage import ensure_upload_directory
 from app.middleware.auth_middleware import JWTAuthenticationMiddleware, PasswordExpiryMiddleware
 from app.middleware.monitoring_middleware import MonitoringMiddleware
+from app.middleware.rate_limit_middleware import RateLimitMiddleware
 from app.middleware.rbac_middleware import RBACMiddleware
+from app.middleware.security_middleware import (
+    RequestValidationMiddleware,
+    SQLInjectionProtectionMiddleware,
+    SecurityHeadersMiddleware,
+)
 
 logger = logging.getLogger("ent_rag")
 
@@ -69,24 +77,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-allowed_origins = [
-    frontend_url,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **get_cors_settings(),
 )
-app.add_middleware(MonitoringMiddleware)
-app.add_middleware(PasswordExpiryMiddleware)
-app.add_middleware(RBACMiddleware)
+
+# Starlette applies middleware in reverse registration order.
 app.add_middleware(JWTAuthenticationMiddleware)
+app.add_middleware(RBACMiddleware)
+app.add_middleware(PasswordExpiryMiddleware)
+app.add_middleware(MonitoringMiddleware)
+app.add_middleware(RequestValidationMiddleware)
+app.add_middleware(SQLInjectionProtectionMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(api_router)
 app.include_router(auth_router, prefix="/api/v1")
@@ -104,6 +108,7 @@ app.include_router(superadmin_users_router, prefix="/api/v1")
 app.include_router(rag_analytics_router, prefix="/api/v1")
 app.include_router(monitoring_router, prefix="/api/v1")
 app.include_router(compliance_router, prefix="/api/v1")
+app.include_router(security_router, prefix="/api/v1")
 
 
 @app.exception_handler(IsolationViolationError)

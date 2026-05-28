@@ -10,6 +10,7 @@ import AlertsPanel from "./pages/AlertsPanel.jsx";
 import ApprovalQueue from "./pages/ApprovalQueue.jsx";
 import DebuggingAssistant from "./pages/DebuggingAssistant.jsx";
 import MonitoringDashboard from "./pages/MonitoringDashboard.jsx";
+import SecurityDashboard from "./pages/SecurityDashboard.jsx";
 import ChatHistory from "./pages/ChatHistory.jsx";
 import ChatInterface from "./pages/ChatInterface.jsx";
 import ComplianceReports from "./pages/ComplianceReports.jsx";
@@ -126,6 +127,7 @@ export default function App() {
       <Route path="/compliance/audit-logs" element={<AuditLogs />} />
       <Route path="/compliance/reports" element={<ComplianceReports />} />
       <Route path="/compliance/retention" element={<DataRetentionSettings />} />
+      <Route path="/security" element={<SecurityDashboard />} />
       <Route path="/superadmin/dashboard" element={<SuperAdminDashboard />} />
       <Route path="/superadmin/users" element={<UserManagement />} />
       <Route
