@@ -1,219 +1,131 @@
-import React, { useEffect, useState } from "react";
-import { CheckCircle, XCircle, Filter, RefreshCw } from "lucide-react";
-import { adminApi } from "../services/adminApi.js";
-import ApprovalModal from "../components/ApprovalModal.jsx";
+import React, { useEffect, useState } from 'react';
+import { CheckCircle, XCircle, Clock, FileText } from 'lucide-react';
+import AppLayout from '../components/Layout/AppLayout.jsx';
+import StatsCard from '../components/UI/StatsCard.jsx';
+import Modal from '../components/UI/Modal.jsx';
+import { adminApi } from '../services/adminApi.js';
+import { formatDistanceToNow } from 'date-fns';
 
 export default function ApprovalQueue() {
-  const [data, setData] = useState({ documents: [], total_pending: 0, total_reviewed: 0, page: 1, page_size: 20 });
-  const [stats, setStats] = useState(null);
+  const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
-  const [bulkSelected, setBulkSelected] = useState(new Set());
-  const [filterDept, setFilterDept] = useState("");
-  const [filterType, setFilterType] = useState("");
-  const [toast, setToast] = useState("");
+  const [rejectModal, setRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [approvedToday, setApprovedToday] = useState(0);
+  const [rejectedToday, setRejectedToday] = useState(0);
+  const [processing, setProcessing] = useState(false);
 
-  const loadQueue = async (page = 1) => {
+  const load = () => {
     setLoading(true);
-    const [qRes, sRes] = await Promise.all([
-      adminApi.getApprovalQueue({ page, page_size: 20 }),
-      adminApi.getGovernanceStats(),
-    ]);
-    if (qRes.ok) setData(qRes.data);
-    if (sRes.ok) setStats(sRes.data);
-    setLoading(false);
-  };
-
-  useEffect(() => { loadQueue(); }, []);
-
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
-
-  const handleApprove = async (docId) => {
-    const res = await adminApi.approveDocument({ document_id: docId, action: "approve" });
-    if (res.ok) { showToast("Document approved."); loadQueue(data.page); setSelected(null); }
-    else throw new Error(res.error);
-  };
-
-  const handleReject = async (docId, reason) => {
-    const res = await adminApi.rejectDocument({ document_id: docId, action: "reject", rejection_reason: reason });
-    if (res.ok) { showToast("Document rejected."); loadQueue(data.page); setSelected(null); }
-    else throw new Error(res.error);
-  };
-
-  const handleBulkApprove = async () => {
-    for (const id of bulkSelected) await adminApi.approveDocument({ document_id: id, action: "approve" });
-    setBulkSelected(new Set());
-    showToast(`${bulkSelected.size} document(s) approved.`);
-    loadQueue(data.page);
-  };
-
-  const toggleBulk = (id) => {
-    setBulkSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
+    adminApi.getApprovalQueue({ page: 1, page_size: 50 })
+      .then(r => { if (r.ok) setQueue(r.data?.documents || []); })
+      .finally(() => setLoading(false));
+    adminApi.getGovernanceStats().then(r => {
+      if (r.ok) { setApprovedToday(r.data?.approved_today ?? 0); setRejectedToday(r.data?.rejected_today ?? 0); }
     });
   };
 
-  const filtered = data.documents.filter((doc) => {
-    if (filterDept && doc.department_id !== filterDept) return false;
-    if (filterType && doc.file_type !== filterType) return false;
-    return true;
-  });
+  useEffect(load, []);
 
-  const fileTypes = [...new Set(data.documents.map((d) => d.file_type).filter(Boolean))];
+  async function approve(doc) {
+    setProcessing(true);
+    await adminApi.approveDocument({ document_id: doc.id, notes: 'Approved' });
+    setSelected(null);
+    setProcessing(false);
+    load();
+  }
+
+  async function reject() {
+    if (!selected || !rejectReason.trim()) return;
+    setProcessing(true);
+    await adminApi.rejectDocument({ document_id: selected.id, reason: rejectReason });
+    setRejectModal(false); setRejectReason(''); setSelected(null); setProcessing(false);
+    load();
+  }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6">
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 rounded bg-slate-900 px-4 py-2 text-sm text-white shadow">
-          {toast}
-        </div>
-      )}
-      {selected && (
-        <ApprovalModal
-          document={selected}
-          onApprove={handleApprove}
-          onReject={handleReject}
-          onClose={() => setSelected(null)}
-        />
-      )}
+    <AppLayout title="Approval Queue" subtitle="Review and approve submitted documents">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+        <StatsCard title="Pending Review" value={queue.length}   icon={Clock}        color="yellow" />
+        <StatsCard title="Approved Today" value={approvedToday}  icon={CheckCircle}  color="green" />
+        <StatsCard title="Rejected Today" value={rejectedToday}  icon={XCircle}      color="red" />
+      </div>
 
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-6 flex flex-col gap-3 border-b pb-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Approval Queue</h1>
-            <p className="text-sm text-slate-600">Review and approve documents before they become searchable.</p>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-2 card overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h2 className="font-semibold text-gray-900">Pending ({queue.length})</h2>
           </div>
-          <button onClick={() => loadQueue()} className="flex items-center gap-1 rounded border px-3 py-2 text-sm hover:bg-white">
-            <RefreshCw className="h-4 w-4" /> Refresh
-          </button>
-        </header>
-
-        {/* Stats bar */}
-        <div className="mb-5 grid gap-4 md:grid-cols-4">
-          {[
-            ["Pending", data.total_pending, "bg-yellow-50 border-yellow-200 text-yellow-800"],
-            ["Reviewed", data.total_reviewed, "bg-blue-50 border-blue-200 text-blue-800"],
-            ["Approved", stats?.total_approved ?? "—", "bg-emerald-50 border-emerald-200 text-emerald-800"],
-            ["Rejected", stats?.total_rejected ?? "—", "bg-red-50 border-red-200 text-red-800"],
-          ].map(([label, value, cls]) => (
-            <div key={label} className={`rounded border p-4 ${cls}`}>
-              <div className="text-xs font-medium">{label}</div>
-              <div className="mt-1 text-2xl font-semibold">{value}</div>
-            </div>
-          ))}
+          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 340px)' }}>
+            {loading ? (
+              <div className="p-4 space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />)}</div>
+            ) : queue.length === 0 ? (
+              <p className="text-center text-gray-400 text-sm py-10">No documents awaiting approval</p>
+            ) : queue.map(doc => (
+              <button key={doc.id} onClick={() => setSelected(doc)}
+                className={`w-full text-left px-5 py-4 border-b border-gray-50 hover:bg-gray-50 transition-colors ${selected?.id === doc.id ? 'bg-blue-50' : ''}`}>
+                <div className="flex items-start gap-3">
+                  <FileText className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{doc.title || doc.file_name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{doc.file_type?.split('/').pop()?.toUpperCase()} · {doc.created_at ? formatDistanceToNow(new Date(doc.created_at), { addSuffix: true }) : ''}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Filters */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <Filter className="h-4 w-4 text-slate-500" />
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">All file types</option>
-            {fileTypes.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
-          </select>
-          {bulkSelected.size > 0 && (
-            <button
-              onClick={handleBulkApprove}
-              className="ml-auto flex items-center gap-1 rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-700"
-            >
-              <CheckCircle className="h-4 w-4" />
-              Approve {bulkSelected.size} selected
-            </button>
+        <div className="lg:col-span-3 card p-6">
+          {!selected ? (
+            <div className="h-full flex flex-col items-center justify-center text-center py-16">
+              <FileText className="w-12 h-12 text-gray-200 mb-3" />
+              <p className="font-medium text-gray-500">Select a document to review</p>
+              <p className="text-sm text-gray-400 mt-1">Click any document from the list to view details</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{selected.title || selected.file_name}</h3>
+                  <p className="text-sm text-gray-400 mt-1">{selected.file_name}</p>
+                </div>
+                <span className="badge badge-yellow">Pending</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                {[['File Size', selected.file_size_mb ? `${selected.file_size_mb} MB` : '—'],
+                  ['Submitted', selected.created_at ? formatDistanceToNow(new Date(selected.created_at), { addSuffix: true }) : '—'],
+                  ['Chunks', selected.chunk_count ?? '—'],
+                  ['Department', selected.department_id ? 'Assigned' : 'General']].map(([l, v]) => (
+                  <div key={l} className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500 font-medium">{l}</p>
+                    <p className="text-sm font-semibold text-gray-800 mt-0.5">{v}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => approve(selected)} disabled={processing} className="flex-1 btn-success justify-center py-3">
+                  <CheckCircle className="w-4 h-4" />{processing ? 'Processing…' : 'Approve'}
+                </button>
+                <button onClick={() => setRejectModal(true)} disabled={processing} className="flex-1 btn-danger justify-center py-3">
+                  <XCircle className="w-4 h-4" />Reject
+                </button>
+              </div>
+            </>
           )}
         </div>
-
-        {/* Table */}
-        <div className="overflow-x-auto rounded border bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50">
-              <tr>
-                <th className="w-8 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={bulkSelected.size === filtered.length && filtered.length > 0}
-                    onChange={() => {
-                      if (bulkSelected.size === filtered.length) setBulkSelected(new Set());
-                      else setBulkSelected(new Set(filtered.map((d) => d.id)));
-                    }}
-                  />
-                </th>
-                <th className="px-4 py-3">Title</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Department</th>
-                <th className="px-4 py-3">Uploaded by</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No documents pending review.</td></tr>
-              ) : (
-                filtered.map((doc) => (
-                  <tr
-                    key={doc.id}
-                    className="cursor-pointer hover:bg-slate-50"
-                    onClick={() => setSelected(doc)}
-                  >
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={bulkSelected.has(doc.id)}
-                        onChange={() => toggleBulk(doc.id)}
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{doc.title}</td>
-                    <td className="px-4 py-3 text-slate-500">{doc.file_type?.toUpperCase()}</td>
-                    <td className="px-4 py-3 text-slate-500">{doc.department_id ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-500">{doc.uploaded_by}</td>
-                    <td className="px-4 py-3 text-slate-500">{new Date(doc.created_at).toLocaleDateString()}</td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${
-                        doc.status === "reviewed" ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
-                      }`}>{doc.status}</span>
-                    </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => handleApprove(doc.id)}
-                          className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50"
-                        >
-                          <CheckCircle className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setSelected(doc)}
-                          className="rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-                        >
-                          <XCircle className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="mt-4 flex items-center gap-3 text-sm text-slate-500">
-          <button disabled={data.page <= 1} onClick={() => loadQueue(data.page - 1)} className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-white">
-            Previous
-          </button>
-          <span>Page {data.page}</span>
-          <button onClick={() => loadQueue(data.page + 1)} className="rounded border px-3 py-1.5 hover:bg-white">
-            Next
-          </button>
-        </div>
       </div>
-    </main>
+
+      <Modal isOpen={rejectModal} onClose={() => setRejectModal(false)} title="Reject Document" size="sm"
+        footer={<><button className="btn-secondary" onClick={() => setRejectModal(false)}>Cancel</button>
+          <button className="btn-danger" onClick={reject} disabled={!rejectReason.trim() || processing}>Reject</button></>}>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">Reason for rejecting <strong>"{selected?.title || selected?.file_name}"</strong></p>
+          <textarea className="input resize-none" rows={4} placeholder="Enter rejection reason…"
+            value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
+        </div>
+      </Modal>
+    </AppLayout>
   );
 }

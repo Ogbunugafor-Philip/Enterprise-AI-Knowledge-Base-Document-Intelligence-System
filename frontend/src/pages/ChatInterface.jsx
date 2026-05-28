@@ -1,201 +1,231 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Loader2, MessageSquarePlus } from "lucide-react";
-import { ChatMessageSkeleton } from "../components/LoadingSkeleton.jsx";
-import { debounce } from "../utils/performance.js";
-import { chatApi } from "../services/chatApi.js";
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { MessageSquarePlus, Send, ThumbsUp, ThumbsDown, AlertTriangle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import AppLayout from '../components/Layout/AppLayout.jsx';
+import { chatApi } from '../services/chatApi.js';
+import { formatDistanceToNow } from 'date-fns';
 
-const SampleQuestions = lazy(() => import("../components/SampleQuestions.jsx"));
-const HelpSection     = lazy(() => import("../components/HelpSection.jsx"));
-
-const VIRTUAL_THRESHOLD = 50;
-
-function confidenceClass(score) {
-  if (score > 0.8) return "bg-emerald-100 text-emerald-800";
-  if (score >= 0.5) return "bg-yellow-100 text-yellow-800";
-  return "bg-red-100 text-red-800";
+function ConfidenceBar({ score }) {
+  const pct = Math.round((score || 0) * 100);
+  const color = pct > 75 ? 'bg-green-500' : pct > 50 ? 'bg-yellow-500' : 'bg-red-500';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+        <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs font-medium text-gray-600">{pct}%</span>
+    </div>
+  );
 }
 
-const ChatMessage = React.memo(function ChatMessage({ message }) {
-  return (
-    <article className={`rounded border p-4 ${message.role === "user" ? "ml-auto max-w-2xl bg-slate-900 text-white" : "max-w-3xl bg-white"}`}>
-      {message.response_rejected && (
-        <div className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          Safe fallback: source evidence was not strong enough.
-        </div>
-      )}
-      <p className="text-sm leading-6">{message.content || message.answer}</p>
-      {message.role === "assistant" && (
-        <div className="mt-4 space-y-3 text-sm">
-          <div className="flex flex-wrap gap-2">
-            <span className={`rounded px-2 py-1 ${confidenceClass(message.confidence_score || 0)}`}>
-              Confidence {Math.round((message.confidence_score || 0) * 100)}%
-            </span>
-            <span className="rounded bg-slate-100 px-2 py-1">
-              Retrieval {Math.round((message.retrieval_score || 0) * 100)}%
-            </span>
-            <span className="rounded bg-slate-100 px-2 py-1">
-              Risk {(message.hallucination_risk_score || 0) > 0.7 ? "high" : (message.hallucination_risk_score || 0) > 0.4 ? "medium" : "low"}
-            </span>
-          </div>
-          {(message.source_documents || []).map((source, index) => (
-            <div key={`${source.document_id}-${index}`} className="rounded border border-slate-200 p-2">
-              {source.document_title} {source.page_number ? `page ${source.page_number}` : ""}
-            </div>
-          ))}
-          <div className="flex flex-wrap gap-2">
-            {["Correct", "Incorrect", "Unclear", "Report Hallucination"].map((label) => (
-              <button key={label} className="rounded border px-2 py-1 text-xs">{label}</button>
-            ))}
-          </div>
-        </div>
-      )}
-    </article>
+function ChatMessage({ msg, onFeedback }) {
+  const [showSources, setShowSources] = useState(false);
+  const isUser = msg.role === 'user';
+  if (isUser) return (
+    <div className="flex justify-end mb-4">
+      <div className="max-w-2xl bg-blue-600 text-white rounded-2xl rounded-tr-sm px-5 py-3.5 shadow-sm">
+        <p className="text-sm leading-relaxed">{msg.content}</p>
+      </div>
+    </div>
   );
-});
+  return (
+    <div className="flex justify-start mb-4">
+      <div className="max-w-3xl w-full">
+        <div className="card px-5 py-4">
+          {msg.response_rejected && (
+            <div className="flex items-start gap-2 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800">Source evidence was not strong enough to provide a confident answer.</p>
+            </div>
+          )}
+          <p className="text-sm text-gray-800 leading-relaxed mb-3">{msg.content || msg.answer}</p>
 
-const MessageList = React.memo(function MessageList({ messages, loading }) {
+          {msg.confidence_score !== undefined && (
+            <div className="mb-3 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-gray-500 font-medium">
+                <span>Confidence</span>
+                <span className={`badge ${msg.confidence_score > 0.75 ? 'badge-green' : msg.confidence_score > 0.5 ? 'badge-yellow' : 'badge-red'}`}>
+                  {msg.hallucination_risk_score > 0.6 ? 'High Risk' : msg.hallucination_risk_score > 0.3 ? 'Medium Risk' : 'Low Risk'}
+                </span>
+              </div>
+              <ConfidenceBar score={msg.confidence_score} />
+            </div>
+          )}
+
+          {msg.source_documents?.length > 0 && (
+            <div className="mb-3">
+              <button onClick={() => setShowSources(v => !v)} className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700">
+                {showSources ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                {msg.source_documents.length} source{msg.source_documents.length !== 1 ? 's' : ''}
+              </button>
+              {showSources && (
+                <div className="mt-2 space-y-1.5">
+                  {msg.source_documents.map((src, i) => (
+                    <div key={i} className="text-xs bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+                      <span className="font-medium text-gray-700">{src.document_title}</span>
+                      {src.page_number && <span className="text-gray-400 ml-1.5">· p.{src.page_number}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1 pt-2 border-t border-gray-50">
+            {[['correct', <ThumbsUp key="u" className="w-3.5 h-3.5" />, 'Helpful'],
+              ['incorrect', <ThumbsDown key="d" className="w-3.5 h-3.5" />, 'Not Helpful'],
+              ['hallucination', <AlertTriangle key="a" className="w-3.5 h-3.5" />, 'Report']
+            ].map(([type, icon, label]) => (
+              <button key={type} onClick={() => onFeedback?.(msg.id, type)}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors">
+                {icon}{label}
+              </button>
+            ))}
+            {msg.created_at && (
+              <span className="ml-auto text-xs text-gray-300">
+                {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex justify-start mb-4">
+      <div className="card px-5 py-4">
+        <div className="flex items-center gap-1.5">
+          {[0,1,2].map(i => (
+            <div key={i} className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+          ))}
+          <span className="text-xs text-gray-400 ml-1.5">DocIntel is thinking…</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ChatInterface() {
+  const navigate = useNavigate();
+  const { sessionId } = useParams();
+  const [messages, setMessages] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sessLoading, setSessLoading] = useState(true);
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
-
-  // Virtualise when list exceeds threshold
-  const visible = messages.length > VIRTUAL_THRESHOLD
-    ? messages.slice(-VIRTUAL_THRESHOLD)
-    : messages;
-
-  return (
-    <div className="flex-1 space-y-4 overflow-y-auto p-5">
-      {messages.length === 0 && (
-        <div className="rounded border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          Ask a question to begin.
-        </div>
-      )}
-      {messages.length > VIRTUAL_THRESHOLD && (
-        <p className="text-center text-xs text-slate-400">
-          Showing last {VIRTUAL_THRESHOLD} messages
-        </p>
-      )}
-      {visible.map((message) => (
-        <ChatMessage key={message.id} message={message} />
-      ))}
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Loader2 className="h-4 w-4 animate-spin" />Generating response...
-        </div>
-      )}
-      <div ref={bottomRef} />
-    </div>
-  );
-});
-
-export default React.memo(function ChatInterface() {
-  const { sessionId } = useParams();
-  const [messages, setMessages]   = useState([]);
-  const [sessions, setSessions]   = useState([]);
-  const [input, setInput]         = useState("");
-  const [search, setSearch]       = useState("");
-  const [loading, setLoading]     = useState(false);
-  const [sessionsLoading, setSessionsLoading] = useState(true);
-
-  useEffect(() => {
-    setSessionsLoading(true);
-    chatApi.getSessions({ limit: 20, offset: 0 }).then((res) => {
-      if (res.ok) setSessions(res.data.sessions || []);
-      setSessionsLoading(false);
+    chatApi.getSessions({ limit: 30, offset: 0 }).then(r => {
+      if (r.ok) setSessions(r.data.sessions || []);
+      setSessLoading(false);
     });
   }, []);
 
   useEffect(() => {
-    if (sessionId) {
-      chatApi.getSession(sessionId).then((res) => res.ok && setMessages(res.data.messages || []));
-    }
+    if (sessionId) chatApi.getSession(sessionId).then(r => r.ok && setMessages(r.data.messages || []));
+    else setMessages([]);
   }, [sessionId]);
 
-  const debouncedSearch = useMemo(
-    () => debounce((q) => chatApi.searchConversations({ query: q }), 300),
-    []
-  );
-
-  const handleSearchChange = useCallback((e) => {
-    setSearch(e.target.value);
-    if (e.target.value.length > 2) debouncedSearch(e.target.value);
-  }, [debouncedSearch]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
 
   const send = useCallback(async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || loading) return;
+    const q = input.trim();
+    setInput('');
     setLoading(true);
-    const question = input;
-    setInput("");
-    setMessages((prev) => [...prev, { id: `local-${Date.now()}`, role: "user", content: question }]);
-    const res = await chatApi.askQuestion({ session_id: sessionId || null, question });
-    if (res.ok) {
-      setMessages((prev) => [...prev, { id: res.data.message_id, role: "assistant", content: res.data.answer, ...res.data }]);
-    }
+    const localId = `local-${Date.now()}`;
+    setMessages(prev => [...prev, { id: localId, role: 'user', content: q }]);
+    const res = await chatApi.askQuestion({ session_id: sessionId || null, question: q });
+    if (res.ok) setMessages(prev => [...prev, { id: res.data.message_id, role: 'assistant', ...res.data }]);
     setLoading(false);
-  }, [input, sessionId]);
+  }, [input, loading, sessionId]);
 
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-  }, [send]);
+  async function handleFeedback(messageId, type) {
+    await chatApi.submitFeedback({ message_id: messageId, feedback: type });
+  }
+
+  async function newChat() {
+    const res = await chatApi.createSession({ title: 'New conversation' });
+    if (res.ok) { navigate(`/chat/${res.data.id}`); setSessions(p => [res.data, ...p]); }
+  }
+
+  const sampleQs = ['What is our leave policy?', 'How do I submit an expense report?', 'What are IT security guidelines?'];
 
   return (
-    <main className="grid min-h-screen bg-slate-50 text-slate-950 lg:grid-cols-[280px_1fr_300px]">
-      <aside className="border-r border-slate-200 bg-white p-4">
-        <Link to="/chat" className="mb-4 inline-flex items-center gap-2 rounded bg-slate-900 px-3 py-2 text-sm text-white">
-          <MessageSquarePlus className="h-4 w-4" />New Chat
-        </Link>
-        <input
-          className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
-          placeholder="Search sessions..."
-          value={search}
-          onChange={handleSearchChange}
-        />
-        <div className="space-y-2">
-          {sessionsLoading
-            ? [1, 2, 3].map((i) => (
-                <div key={i} className="h-8 animate-pulse rounded bg-slate-200" />
-              ))
-            : sessions.map((session) => (
-                <Link key={session.id} className="block truncate rounded border border-slate-200 px-3 py-2 text-sm hover:border-slate-400" to={`/chat/${session.id}`}>
-                  {session.title}
-                </Link>
-              ))}
+    <div className="flex h-screen bg-slate-100 overflow-hidden">
+      {/* Sessions Sidebar */}
+      <aside className="w-72 bg-white border-r border-gray-200 flex flex-col shadow-sm">
+        <div className="p-4 border-b border-gray-100">
+          <button onClick={newChat} className="w-full btn-primary justify-center">
+            <MessageSquarePlus className="w-4 h-4" />New Chat
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          {sessLoading ? [1,2,3,4].map(i => <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />) :
+            sessions.map(s => (
+              <button key={s.id} onClick={() => navigate(`/chat/${s.id}`)}
+                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors truncate ${sessionId === s.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
+                {s.title || 'Untitled conversation'}
+              </button>
+            ))
+          }
         </div>
       </aside>
 
-      <section className="flex min-h-screen flex-col">
-        <header className="border-b border-slate-200 bg-white px-5 py-4">
-          <h1 className="font-semibold">Knowledge chat</h1>
+      {/* Chat Area */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6">
+          <h1 className="font-semibold text-gray-900">Knowledge Chat</h1>
         </header>
-        <MessageList messages={messages} loading={loading} />
-        <footer className="border-t border-slate-200 bg-white p-4">
-          <div className="flex gap-2">
-            <input
-              className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
+
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center">
+              <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+                <MessageSquarePlus className="w-8 h-8 text-blue-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-1">Start a conversation</h3>
+              <p className="text-gray-400 text-sm mb-6">Ask any question about your organization's documents</p>
+              <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+                {sampleQs.map(q => (
+                  <button key={q} onClick={() => setInput(q)}
+                    className="text-sm px-3 py-1.5 rounded-full border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors">
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {messages.map(msg => <ChatMessage key={msg.id} msg={msg} onFeedback={handleFeedback} />)}
+              {loading && <TypingIndicator />}
+              <div ref={bottomRef} />
+            </>
+          )}
+        </div>
+
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="flex items-end gap-3 max-w-4xl mx-auto">
+            <textarea
+              className="input flex-1 resize-none max-h-32 py-3"
+              rows={1}
+              placeholder="Ask a question grounded in your documents…"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask a question..."
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
             />
-            <button className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50" onClick={send} disabled={loading}>
-              Send
+            <button onClick={send} disabled={!input.trim() || loading}
+              className="btn-primary px-4 py-3 rounded-xl self-end">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
-        </footer>
-      </section>
-
-      <aside className="space-y-4 border-l border-slate-200 bg-white p-4">
-        <Suspense fallback={<div className="h-40 animate-pulse rounded bg-slate-200" />}>
-          <SampleQuestions onSelect={setInput} />
-        </Suspense>
-        <section className="rounded border border-slate-200 p-4">
-          <h2 className="text-sm font-semibold">Tips</h2>
-          <p className="mt-2 text-sm text-slate-600">Ask specific questions and compare important answers with source references.</p>
-        </section>
-      </aside>
-    </main>
+          <p className="text-center text-xs text-gray-400 mt-2">Enter to send · Shift+Enter for new line</p>
+        </div>
+      </div>
+    </div>
   );
-});
+}

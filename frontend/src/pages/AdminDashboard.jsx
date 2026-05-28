@@ -1,37 +1,86 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { adminApi } from "../services/adminApi.js";
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FileText, CheckSquare, XCircle, Upload, BarChart3, Clock } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import AppLayout from '../components/Layout/AppLayout.jsx';
+import StatsCard from '../components/UI/StatsCard.jsx';
+import { adminApi } from '../services/adminApi.js';
+import { formatDistanceToNow } from 'date-fns';
+
+const STATUS_COLORS = { approved: '#22c55e', reviewed: '#f59e0b', processing: '#3b82f6', uploaded: '#8b5cf6', failed: '#ef4444', rejected: '#f97316' };
+const STATUS_BADGE  = { approved: 'badge-green', reviewed: 'badge-yellow', processing: 'badge-blue', uploaded: 'badge-purple', failed: 'badge-red', rejected: 'badge-red' };
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState({ total_documents: 0, pending_approval: 0, approved_documents: 0, failed_uploads: 0, documents_by_status: {}, documents_by_type: {}, recent_uploads: [] });
-  useEffect(() => { adminApi.getDashboardStats().then((res) => res.ok && setStats(res.data)); }, []);
+  const navigate = useNavigate();
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    adminApi.getDashboardStats().then(r => { if (r.ok) setStats(r.data); setLoading(false); });
+  }, []);
+
+  const pieData = stats?.documents_by_status
+    ? Object.entries(stats.documents_by_status).map(([name, value]) => ({ name, value }))
+    : [];
+
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6">
-      <div className="mx-auto max-w-6xl">
-        <header className="flex flex-col gap-3 border-b pb-5 md:flex-row md:items-center md:justify-between">
-          <div><h1 className="text-2xl font-semibold">Admin dashboard</h1><p className="text-sm text-slate-600">Document ingestion, approvals, and operational overview.</p></div>
-          <nav className="flex flex-wrap gap-2 text-sm">
-            <Link className="rounded border px-3 py-2" to="/admin/documents">Documents</Link>
-            <Link className="rounded border px-3 py-2" to="/admin/documents?status=reviewed">Approvals</Link>
-            <Link className="rounded border px-3 py-2" to="/super-admin">Users</Link>
-            <Link className="rounded border px-3 py-2" to="/admin/dashboard">Monitoring</Link>
-          </nav>
-        </header>
-        <section className="mt-6 grid gap-4 md:grid-cols-4">
-          {[["Total documents", stats.total_documents], ["Pending approval", stats.pending_approval], ["Approved", stats.approved_documents], ["Failed uploads", stats.failed_uploads]].map(([label, value]) => (
-            <div key={label} className="rounded border bg-white p-4"><div className="text-sm text-slate-500">{label}</div><div className="mt-2 text-2xl font-semibold">{value}</div></div>
-          ))}
-        </section>
-        <section className="mt-6 grid gap-4 lg:grid-cols-2">
-          <div className="rounded border bg-white p-4"><h2 className="font-semibold">Documents by status</h2>{Object.entries(stats.documents_by_status || {}).map(([k, v]) => <div key={k} className="mt-2 flex justify-between text-sm"><span>{k}</span><span>{v}</span></div>)}</div>
-          <div className="rounded border bg-white p-4"><h2 className="font-semibold">Documents by file type</h2>{Object.entries(stats.documents_by_type || {}).map(([k, v]) => <div key={k} className="mt-2 flex justify-between text-sm"><span>{k}</span><span>{v}</span></div>)}</div>
-        </section>
-        <section className="mt-6 rounded border bg-white p-4">
-          <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Recent uploads</h2><span className="rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-800">System healthy</span></div>
-          <table className="w-full text-left text-sm"><thead><tr className="border-b"><th className="py-2">File</th><th>Type</th><th>Status</th><th>Uploaded by</th><th>Date</th></tr></thead><tbody>{(stats.recent_uploads || []).map((doc) => <tr key={doc.id} className="border-b"><td className="py-2">{doc.file_name}</td><td>{doc.file_type}</td><td>{doc.status}</td><td>{doc.uploaded_by}</td><td>{new Date(doc.created_at).toLocaleString()}</td></tr>)}</tbody></table>
-        </section>
-        <div className="mt-6 flex gap-2"><Link className="rounded bg-slate-900 px-3 py-2 text-sm text-white" to="/admin/documents">Upload Document</Link><Link className="rounded border px-3 py-2 text-sm" to="/admin/documents">View All Documents</Link><Link className="rounded border px-3 py-2 text-sm" to="/admin/documents?status=failed">View Failed Uploads</Link></div>
+    <AppLayout title="Admin Dashboard" subtitle="Document management and governance overview">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        <StatsCard title="Total Documents"  value={loading ? '…' : (stats?.total_documents ?? 0)}  icon={FileText}    color="blue" />
+        <StatsCard title="Pending Approval" value={loading ? '…' : (stats?.pending_approval ?? 0)} icon={CheckSquare} color="yellow" />
+        <StatsCard title="Approved"         value={loading ? '…' : (stats?.approved_documents ?? 0)} icon={CheckSquare} color="green" />
+        <StatsCard title="Failed"           value={loading ? '…' : (stats?.failed_uploads ?? 0)}   icon={XCircle}    color="red" />
       </div>
-    </main>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="card p-6">
+          <h2 className="section-title flex items-center gap-2"><BarChart3 className="w-5 h-5 text-blue-500" />By Status</h2>
+          {loading ? <div className="h-48 bg-gray-100 rounded-xl animate-pulse" /> : pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3} dataKey="value">
+                  {pieData.map(e => <Cell key={e.name} fill={STATUS_COLORS[e.name] || '#94a3b8'} />)}
+                </Pie>
+                <Tooltip formatter={(v, n) => [v, n.charAt(0).toUpperCase() + n.slice(1)]} />
+                <Legend formatter={v => v.charAt(0).toUpperCase() + v.slice(1)} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <div className="empty-state text-sm">No documents yet</div>}
+        </div>
+
+        <div className="card p-6 lg:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="section-title m-0 flex items-center gap-2"><Clock className="w-5 h-5 text-blue-500" />Recent Uploads</h2>
+            <button onClick={() => navigate('/admin/documents')} className="text-sm text-blue-600 font-medium">View all</button>
+          </div>
+          {loading ? <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />)}</div>
+            : !stats?.recent_uploads?.length ? <div className="empty-state text-sm">No recent uploads</div>
+            : (
+              <table className="table">
+                <thead><tr><th>Document</th><th>Type</th><th>Status</th><th>When</th></tr></thead>
+                <tbody>
+                  {stats.recent_uploads.map(doc => (
+                    <tr key={doc.id}>
+                      <td className="font-medium max-w-xs truncate">{doc.title || doc.file_name}</td>
+                      <td><span className="badge badge-gray text-xs">{doc.file_type?.split('/').pop() || 'file'}</span></td>
+                      <td><span className={`badge ${STATUS_BADGE[doc.status] || 'badge-gray'}`}>{doc.status}</span></td>
+                      <td className="text-gray-400 text-xs">{doc.created_at ? formatDistanceToNow(new Date(doc.created_at), { addSuffix: true }) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </div>
+      </div>
+
+      <div className="mt-6 card p-6">
+        <h2 className="section-title">Quick Actions</h2>
+        <div className="flex flex-wrap gap-3">
+          <button onClick={() => navigate('/admin/documents')} className="btn-primary"><Upload className="w-4 h-4" />Upload Document</button>
+          <button onClick={() => navigate('/admin/approvals')} className="btn-secondary"><CheckSquare className="w-4 h-4" />Review Queue {stats?.pending_approval ? `(${stats.pending_approval})` : ''}</button>
+          <button onClick={() => navigate('/admin/documents')} className="btn-secondary"><FileText className="w-4 h-4" />All Documents</button>
+        </div>
+      </div>
+    </AppLayout>
   );
 }
