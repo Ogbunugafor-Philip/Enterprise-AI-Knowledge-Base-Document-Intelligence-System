@@ -13,22 +13,11 @@ function extractError(err) {
   return "Request failed. Please try again.";
 }
 
-function getStoredUser() {
-  try {
-    return JSON.parse(localStorage.getItem("ent_rag_user") || "{}");
-  } catch {
-    return {};
-  }
-}
-
 export default function CreateUserModal({ onClose, onCreated }) {
-  const storedUser = getStoredUser();
-
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
     email: "",
-    organization_id: storedUser.organization_id || "",
     department_id: "",
     role_id: "",
     send_welcome_email: true,
@@ -61,7 +50,6 @@ export default function CreateUserModal({ onClose, onCreated }) {
     if (!form.first_name.trim()) e.first_name = "Required";
     if (!form.last_name.trim()) e.last_name = "Required";
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) e.email = "Valid email required";
-    if (!form.organization_id) e.organization_id = "Organization not found — please re-login";
     if (!form.role_id) e.role_id = "Required";
     return e;
   };
@@ -76,7 +64,6 @@ export default function CreateUserModal({ onClose, onCreated }) {
       first_name: form.first_name.trim(),
       last_name: form.last_name.trim(),
       email: form.email.trim(),
-      organization_id: form.organization_id,
       role_id: form.role_id,
       send_welcome_email: form.send_welcome_email,
     };
@@ -211,9 +198,6 @@ export default function CreateUserModal({ onClose, onCreated }) {
               </label>
             </div>
 
-            {errors.organization_id && (
-              <p className="rounded bg-yellow-50 px-3 py-2 text-sm text-yellow-700">{errors.organization_id}</p>
-            )}
             {errors.submit && (
               <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{errors.submit}</p>
             )}

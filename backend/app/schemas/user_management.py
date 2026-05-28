@@ -9,7 +9,7 @@ class UserCreateRequest(BaseModel):
     last_name: str = Field(..., min_length=1, max_length=120)
     email: EmailStr
     department_id: UUID | None = None
-    organization_id: UUID
+    organization_id: UUID | None = None
     role_id: UUID | None = None
     send_welcome_email: bool = True
 

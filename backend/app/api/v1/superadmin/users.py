@@ -136,12 +136,15 @@ async def create_user(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> UserCreateResponse:
+    organization_id = payload.organization_id or current_user.organization_id
+    if organization_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="organization_id is required")
     user = await user_management_service.create_user(
         db=db,
         first_name=payload.first_name,
         last_name=payload.last_name,
         email=str(payload.email),
-        organization_id=payload.organization_id,
+        organization_id=organization_id,
         role_id=payload.role_id,
         department_id=payload.department_id,
         send_welcome_email=payload.send_welcome_email,
