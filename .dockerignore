@@ -1,0 +1,48 @@
+# Secrets and environment
+.env
+.env.*
+*.env
+secrets/
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+npm-debug.log
+
+# Git
+.git/
+.gitignore
+
+# Docs and non-essential files
+README.md
+*.md
+docs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Uploads
+uploads/
+media/

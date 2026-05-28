@@ -1,0 +1,164 @@
+services:
+  backend:
+    build:
+      context: ../backend
+    env_file:
+      - ../.env
+    environment:
+      ENVIRONMENT: production
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_HOST: qdrant
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1G
+        reservations:
+          memory: 512M
+    networks:
+      - ent_rag_network
+
+  frontend:
+    build:
+      context: ../frontend
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          memory: 256M
+    networks:
+      - ent_rag_network
+
+  postgres:
+    image: postgres:15
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 2G
+        reservations:
+          memory: 1G
+    networks:
+      - ent_rag_network
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          memory: 256M
+    networks:
+      - ent_rag_network
+
+  qdrant:
+    image: qdrant/qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 2G
+        reservations:
+          memory: 1G
+    networks:
+      - ent_rag_network
+
+  celery_worker:
+    build:
+      context: ../backend
+    env_file:
+      - ../.env
+    environment:
+      ENVIRONMENT: production
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_HOST: qdrant
+    command: celery -A worker.celery_config.celery_app worker --loglevel=warning --concurrency=4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1G
+        reservations:
+          memory: 512M
+    networks:
+      - ent_rag_network
+
+  nginx:
+    build:
+      context: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+        reservations:
+          memory: 128M
+    networks:
+      - ent_rag_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+
+networks:
+  ent_rag_network:
+    driver: bridge

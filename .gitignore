@@ -1,0 +1,61 @@
+# Environment and secrets
+.env
+.env.local
+.env.production
+.env.staging
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.log
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+build/
+.npm/
+
+# Uploads and data
+uploads/
+media/
+*.db
+*.sqlite3
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.csr
+
+# Backup files
+*.bak
+*.backup
+*.dump
+
+# JWT and encryption keys
+*.secret
+secrets/
