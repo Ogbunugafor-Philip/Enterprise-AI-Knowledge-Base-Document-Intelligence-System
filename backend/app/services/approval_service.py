@@ -124,7 +124,7 @@ async def reject_document(
         from worker.tasks.document_tasks import delete_document_embeddings_task
 
         delete_document_embeddings_task.delay(
-            str(document.id), str(current_user.organization_id)
+            str(current_user.organization_id), str(document.id)
         )
     except Exception:
         pass

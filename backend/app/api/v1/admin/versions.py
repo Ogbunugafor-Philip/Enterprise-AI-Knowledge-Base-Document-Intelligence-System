@@ -67,11 +67,11 @@ async def upload_new_version(
         department_id=department_id,
         file_type=file_type,
         file_path=str(destination),
+        document_id=new_doc_id,
     )
     if new_doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent document not found")
 
-    new_doc.id = new_doc_id
     await db.commit()
     await db.refresh(new_doc)
 

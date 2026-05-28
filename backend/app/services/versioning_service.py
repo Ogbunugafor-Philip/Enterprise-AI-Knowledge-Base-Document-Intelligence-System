@@ -22,6 +22,7 @@ async def create_document_version(
     department_id: UUID | None = None,
     file_type: str = "",
     file_path: str = "",
+    document_id: UUID | None = None,
 ) -> Document | None:
     parent_result = await db.execute(
         select(Document).where(
@@ -49,7 +50,7 @@ async def create_document_version(
 
     file_size_mb = Decimal(str(round(len(file_content) / (1024 * 1024), 2)))
     new_doc = Document(
-        id=uuid4(),
+        id=document_id or uuid4(),
         organization_id=current_user.organization_id,
         department_id=department_id or parent.department_id,
         uploaded_by=current_user.id,

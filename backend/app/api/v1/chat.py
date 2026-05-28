@@ -26,7 +26,7 @@ from app.schemas.chat import (
     OnboardingStepRequest,
     SampleQuestionsResponse,
 )
-from app.services import ai_guard_service, rag_service
+from app.services import rag_service
 from app.services.chat_service import (
     complete_onboarding,
     complete_onboarding_step,
