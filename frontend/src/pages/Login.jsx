@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Loader2, Lock, Mail } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { API_BASE_URL } from "../config/environment.js";
+import API_BASE_URL from "../config/api.js";
 
 function roleDefaultRoute(role) {
   if (role === "SUPER_ADMIN") return "/superadmin/dashboard";

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { API_BASE_URL } from "../config/environment.js";
+import API_BASE_URL from "../config/api.js";
 
 const AuthContext = createContext(null);
 

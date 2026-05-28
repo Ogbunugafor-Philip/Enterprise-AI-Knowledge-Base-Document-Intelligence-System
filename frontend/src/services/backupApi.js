@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../config/environment.js";
+import API_BASE_URL from "../config/api.js";
 
 function headers() {
   const token = localStorage.getItem("access_token");

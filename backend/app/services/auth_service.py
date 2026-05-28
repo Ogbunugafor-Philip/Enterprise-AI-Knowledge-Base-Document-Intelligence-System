@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import desc, select, update
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
@@ -98,7 +99,9 @@ def check_account_lock(user: User) -> None:
 
 
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> tuple[User, str]:
-    result = await db.execute(select(User).where(User.email == email).order_by(User.created_at))
+    result = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.email == email).order_by(User.created_at)
+    )
     user = result.scalars().first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
@@ -184,7 +187,9 @@ async def create_otp_for_user(db: AsyncSession, user: User, otp_type: str = "ver
 
 
 async def verify_user_otp(db: AsyncSession, email: str, otp_code: str) -> User:
-    result = await db.execute(select(User).where(User.email == email).order_by(User.created_at))
+    result = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.email == email).order_by(User.created_at)
+    )
     user = result.scalars().first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
