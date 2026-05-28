@@ -18,8 +18,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("users", sa.Column("onboarding_completed", sa.Boolean(), nullable=False, server_default=sa.false()))
-    op.add_column("users", sa.Column("onboarding_step", sa.Integer(), nullable=False, server_default="0"))
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing = {col["name"] for col in inspector.get_columns("users")}
+    if "onboarding_completed" not in existing:
+        op.add_column("users", sa.Column("onboarding_completed", sa.Boolean(), nullable=False, server_default=sa.false()))
+    if "onboarding_step" not in existing:
+        op.add_column("users", sa.Column("onboarding_step", sa.Integer(), nullable=False, server_default="0"))
 
 
 def downgrade() -> None:

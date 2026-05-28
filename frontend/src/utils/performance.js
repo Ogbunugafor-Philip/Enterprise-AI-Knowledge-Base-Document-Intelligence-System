@@ -1,24 +1,3 @@
-import React, { Suspense } from "react";
-
-/**
- * Wraps React.lazy with a Suspense boundary and a fallback spinner.
- */
-export function lazyLoadComponent(importFn, FallbackComponent = null) {
-  const LazyComponent = React.lazy(importFn);
-  const fallback = FallbackComponent ? <FallbackComponent /> : (
-    <div className="flex items-center justify-center p-8">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
-    </div>
-  );
-  return function LazyWrapper(props) {
-    return (
-      <Suspense fallback={fallback}>
-        <LazyComponent {...props} />
-      </Suspense>
-    );
-  };
-}
-
 /**
  * Returns a debounced version of fn that fires after `delay` ms of inactivity.
  */
