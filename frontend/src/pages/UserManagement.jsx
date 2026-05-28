@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Users, UserPlus, Upload, Lock, Unlock, RefreshCw, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { UserPlus, Upload, Unlock, RefreshCw, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import AppLayout from '../components/Layout/AppLayout.jsx';
 import DataTable from '../components/UI/DataTable.jsx';
 import Modal from '../components/UI/Modal.jsx';
-import PageHeader from '../components/UI/PageHeader.jsx';
+import CreateUserModal from '../components/CreateUserModal.jsx';
 import { superAdminApi } from '../services/superAdminApi.js';
 
 function RoleBadge({ role }) {
   const map = { SUPER_ADMIN: 'badge-purple', ADMIN: 'badge-blue', USER: 'badge-gray' };
-  return <span className={map[role] || 'badge-gray'}>{role?.replace('_', ' ') || '—'}</span>;
+  return <span className={map[role] || 'badge-gray'}>{role?.replace(/_/g, ' ') || '—'}</span>;
 }
 
 function StatusBadge({ status }) {
@@ -22,53 +21,34 @@ function formatDate(ts) {
   return new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-const ROLES = ['USER', 'ADMIN', 'SUPER_ADMIN'];
-const DEPARTMENTS = ['Engineering', 'Finance', 'HR', 'Legal', 'Operations', 'Sales', 'IT', 'Management'];
+const ROLES    = ['USER', 'ADMIN', 'SUPER_ADMIN'];
 const STATUSES = ['active', 'inactive', 'locked'];
 
 export default function UserManagement() {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
-  const [showBulk, setShowBulk] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [bulkFile, setBulkFile] = useState(null);
-  const [bulkUploading, setBulkUploading] = useState(false);
-  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', role: 'USER', department: '' });
-  const [formError, setFormError] = useState('');
+  const [users,        setUsers]        = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState('');
+  const [roleFilter,   setRoleFilter]   = useState('');
+  const [showCreate,   setShowCreate]   = useState(false);
+  const [showBulk,     setShowBulk]     = useState(false);
+  const [bulkFile,     setBulkFile]     = useState(null);
+  const [bulkUploading,setBulkUploading]= useState(false);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
     const params = {};
     if (roleFilter) params.role = roleFilter;
-    if (statusFilter) params.status = statusFilter;
     const res = await superAdminApi.getUsers(params);
     if (res.ok) setUsers(res.data?.users || res.data || []);
-    else setError(res.error);
+    else setError(typeof res.error === 'string' ? res.error : 'Failed to load users');
     setLoading(false);
-  }, [roleFilter, statusFilter]);
+  }, [roleFilter]);
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
-
-  async function handleCreate(e) {
-    e.preventDefault();
-    setFormError('');
-    if (!form.first_name || !form.last_name || !form.email) {
-      setFormError('First name, last name and email are required.');
-      return;
-    }
-    setCreating(true);
-    const res = await superAdminApi.createUser(form);
-    setCreating(false);
-    if (res.ok) { setShowCreate(false); setForm({ first_name: '', last_name: '', email: '', role: 'USER', department: '' }); loadUsers(); }
-    else setFormError(res.error);
-  }
+  // Load on mount and when filters change
+  React.useEffect(() => { loadUsers(); }, [loadUsers]);
 
   async function handleResetPassword(user) {
-    const newPwd = prompt(`Set new password for ${user.email}:`);
+    const newPwd = prompt(`Set new temporary password for ${user.email}:`);
     if (!newPwd) return;
     const res = await superAdminApi.resetUserPassword(user.id, { new_password: newPwd });
     if (!res.ok) alert(res.error);
@@ -89,7 +69,9 @@ export default function UserManagement() {
   }
 
   async function handleDelete(user) {
-    if (!window.confirm(`Delete user "${user.first_name} ${user.last_name}" (${user.email})?\n\nThis cannot be undone.`)) return;
+    if (!window.confirm(
+      `Delete user "${user.first_name} ${user.last_name}" (${user.email})?\n\nThis cannot be undone.`
+    )) return;
     const res = await superAdminApi.deleteUser(user.id);
     if (res.ok) setUsers(prev => prev.filter(u => u.id !== user.id));
     else alert(res.error);
@@ -110,37 +92,45 @@ export default function UserManagement() {
     {
       key: 'name', header: 'Name', sortable: true,
       accessor: r => `${r.first_name || ''} ${r.last_name || ''}`.trim(),
-      render: r => <span className="font-medium text-gray-900">{r.first_name} {r.last_name}</span>,
+      render:   r => <span className="font-medium text-gray-900">{r.first_name} {r.last_name}</span>,
     },
-    { key: 'email', header: 'Email', sortable: true, accessor: 'email' },
+    { key: 'email',      header: 'Email',      sortable: true, accessor: 'email' },
     { key: 'department', header: 'Department', accessor: r => r.department_name || '—' },
-    { key: 'role', header: 'Role', render: r => <RoleBadge role={r.role} /> },
+    { key: 'role',       header: 'Role',       render: r => <RoleBadge role={r.role} /> },
     {
       key: 'status', header: 'Status',
       render: r => {
-        const status = r.is_locked ? 'locked' : r.is_active ? 'active' : 'inactive';
-        return <StatusBadge status={status} />;
+        const s = r.locked_until && new Date(r.locked_until) > new Date()
+          ? 'locked'
+          : r.is_active ? 'active' : 'inactive';
+        return <StatusBadge status={s} />;
       },
     },
     { key: 'last_login', header: 'Last Login', accessor: r => formatDate(r.last_login) },
     {
       key: 'actions', header: 'Actions',
       render: r => {
-        const status = r.is_locked ? 'locked' : r.is_active ? 'active' : 'inactive';
+        const locked = r.locked_until && new Date(r.locked_until) > new Date();
         return (
           <div className="flex items-center gap-1">
-            <button title="Reset Password" onClick={() => handleResetPassword(r)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded">
+            <button title="Reset Password" onClick={() => handleResetPassword(r)}
+              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded">
               <RefreshCw className="w-4 h-4" />
             </button>
-            <button title={r.is_active ? 'Deactivate' : 'Activate'} onClick={() => handleToggleActive(r)} className="p-1.5 rounded">
-              {r.is_active ? <XCircle className="w-4 h-4 text-yellow-600" /> : <CheckCircle className="w-4 h-4 text-green-600" />}
+            <button title={r.is_active ? 'Deactivate' : 'Activate'} onClick={() => handleToggleActive(r)}
+              className="p-1.5 rounded">
+              {r.is_active
+                ? <XCircle    className="w-4 h-4 text-yellow-600" />
+                : <CheckCircle className="w-4 h-4 text-green-600"  />}
             </button>
-            {status === 'locked' && (
-              <button title="Unlock" onClick={() => handleUnlock(r)} className="p-1.5 text-orange-600 hover:bg-orange-50 rounded">
+            {locked && (
+              <button title="Unlock" onClick={() => handleUnlock(r)}
+                className="p-1.5 text-orange-600 hover:bg-orange-50 rounded">
                 <Unlock className="w-4 h-4" />
               </button>
             )}
-            <button title="Delete" onClick={() => handleDelete(r)} className="p-1.5 text-red-600 hover:bg-red-50 rounded">
+            <button title="Delete" onClick={() => handleDelete(r)}
+              className="p-1.5 text-red-600 hover:bg-red-50 rounded">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
@@ -151,15 +141,12 @@ export default function UserManagement() {
 
   return (
     <AppLayout title="User Management" subtitle="Manage platform users and access">
-      {/* Filters */}
+
+      {/* Filters + Actions */}
       <div className="card p-4 mb-4 flex flex-wrap items-center gap-3">
         <select className="input w-40" value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
           <option value="">All Roles</option>
-          {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
-        </select>
-        <select className="input w-40" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-          <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          {ROLES.map(r => <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>)}
         </select>
         <button onClick={loadUsers} className="btn-secondary flex items-center gap-2">
           <RefreshCw className="w-4 h-4" /> Refresh
@@ -185,48 +172,13 @@ export default function UserManagement() {
         searchable
       />
 
-      {/* Create User Modal */}
-      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Create New User" size="md"
-        footer={
-          <>
-            <button onClick={() => setShowCreate(false)} className="btn-secondary">Cancel</button>
-            <button onClick={handleCreate} disabled={creating} className="btn-primary">
-              {creating ? 'Creating…' : 'Create User'}
-            </button>
-          </>
-        }
-      >
-        <form onSubmit={handleCreate} className="space-y-4">
-          {formError && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{formError}</div>}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-              <input className="input" value={form.first_name} onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} placeholder="John" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-              <input className="input" value={form.last_name} onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} placeholder="Doe" />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input className="input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="john@example.com" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-            <select className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-              {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-            <select className="input" value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))}>
-              <option value="">Select department</option>
-              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-        </form>
-      </Modal>
+      {/* Create User — uses CreateUserModal which loads roles/departments as dropdowns with real UUIDs */}
+      {showCreate && (
+        <CreateUserModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => loadUsers()}
+        />
+      )}
 
       {/* Bulk Upload Modal */}
       <Modal isOpen={showBulk} onClose={() => setShowBulk(false)} title="Bulk Upload Users" size="md"
@@ -240,7 +192,9 @@ export default function UserManagement() {
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">Upload an Excel (.xlsx) file with columns: first_name, last_name, email, role, department.</p>
+          <p className="text-sm text-gray-600">
+            Upload an Excel (.xlsx) file with columns: first_name, last_name, email, role, department.
+          </p>
           <div
             onDragOver={e => e.preventDefault()}
             onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setBulkFile(f); }}
@@ -248,14 +202,21 @@ export default function UserManagement() {
             onClick={() => document.getElementById('bulk-file-input').click()}
           >
             <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-            <p className="text-sm font-medium text-gray-700">{bulkFile ? bulkFile.name : 'Drag & drop or click to select Excel file'}</p>
+            <p className="text-sm font-medium text-gray-700">
+              {bulkFile ? bulkFile.name : 'Drag & drop or click to select Excel file'}
+            </p>
             <p className="text-xs text-gray-400 mt-1">.xlsx files only</p>
-            <input id="bulk-file-input" type="file" accept=".xlsx,.xls" className="hidden" onChange={e => setBulkFile(e.target.files[0])} />
+            <input id="bulk-file-input" type="file" accept=".xlsx,.xls" className="hidden"
+              onChange={e => setBulkFile(e.target.files[0])} />
           </div>
           <button
             onClick={async () => {
               const res = await superAdminApi.downloadBulkTemplate();
-              if (res.ok) { const url = URL.createObjectURL(res.blob); const a = document.createElement('a'); a.href = url; a.download = 'user_template.xlsx'; a.click(); }
+              if (res.ok) {
+                const url = URL.createObjectURL(res.blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'user_template.xlsx'; a.click();
+              }
             }}
             className="btn-secondary w-full text-sm"
           >

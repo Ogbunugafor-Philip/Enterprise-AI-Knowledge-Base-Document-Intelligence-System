@@ -405,6 +405,8 @@ async def get_user_list(
         filters.append(User.department_id == department_id)
     if is_active is not None:
         filters.append(User.is_active == is_active)
+    else:
+        filters.append(User.is_active.is_(True))
     if is_verified is not None:
         filters.append(User.is_verified == is_verified)
     if search_query:

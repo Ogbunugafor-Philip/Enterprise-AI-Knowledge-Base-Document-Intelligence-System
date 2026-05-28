@@ -7,11 +7,15 @@ import { useAuth } from "../context/AuthContext.jsx";
  * allowedRoles: e.g. ["ADMIN", "SUPER_ADMIN"] — omit to allow any authenticated user.
  */
 export default function ProtectedRoute({ children, allowedRoles }) {
-  const { isAuthenticated, role } = useAuth();
+  const { isAuthenticated, role, user } = useAuth();
   const location = useLocation();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (user?.must_change_password && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
   }
 
   if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(role)) {

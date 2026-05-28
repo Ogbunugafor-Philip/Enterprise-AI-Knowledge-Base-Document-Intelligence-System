@@ -44,8 +44,13 @@ export default function Login() {
       });
       const data = await res.json();
       if (res.ok) {
-        login(data.access_token, data.user);
-        navigate(from || roleDefaultRoute(data.user?.role), { replace: true });
+        const userData = { ...data.user, must_change_password: data.must_change_password };
+        login(data.access_token, userData);
+        if (data.must_change_password) {
+          navigate('/change-password', { replace: true });
+        } else {
+          navigate(from || roleDefaultRoute(data.user?.role), { replace: true });
+        }
       } else if (res.status === 403 && data.detail?.toLowerCase().includes('otp')) {
         setStep('otp');
       } else {
@@ -76,8 +81,13 @@ export default function Login() {
         });
         const loginData = await loginRes.json();
         if (loginRes.ok) {
-          login(loginData.access_token, loginData.user);
-          navigate(from || roleDefaultRoute(loginData.user?.role), { replace: true });
+          const userData = { ...loginData.user, must_change_password: loginData.must_change_password };
+          login(loginData.access_token, userData);
+          if (loginData.must_change_password) {
+            navigate('/change-password', { replace: true });
+          } else {
+            navigate(from || roleDefaultRoute(loginData.user?.role), { replace: true });
+          }
         } else {
           setError(loginData.detail || 'Login failed after OTP verification.');
           setStep('login');

@@ -7,6 +7,7 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 // Pages
 import Login from "./pages/Login.jsx";
+import ChangePassword from "./pages/ChangePassword.jsx";
 import UserDashboard from "./pages/UserDashboard.jsx";
 import ChatInterface from "./pages/ChatInterface.jsx";
 import ChatHistory from "./pages/ChatHistory.jsx";
@@ -62,6 +63,7 @@ function AppRoutes() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
+      <Route path="/change-password" element={<ChangePassword />} />
       <Route path="/unauthorized" element={<Unauthorized />} />
 
       {/* Root — redirect based on role */}

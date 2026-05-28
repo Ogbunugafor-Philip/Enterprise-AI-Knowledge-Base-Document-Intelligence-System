@@ -46,13 +46,22 @@ export function AuthProvider({ children }) {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }, [token]);
 
+  const updateUser = useCallback((updates) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...updates };
+      localStorage.setItem("ent_rag_user", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   // Keep legacy access_token in sync in case other pages read it
   useEffect(() => {
     if (token) localStorage.setItem("access_token", token);
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated, role, login, logout, getAuthHeader }}>
+    <AuthContext.Provider value={{ user, token, isAuthenticated, role, login, logout, getAuthHeader, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
