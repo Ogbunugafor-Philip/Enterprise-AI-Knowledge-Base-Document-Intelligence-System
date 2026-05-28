@@ -13,7 +13,9 @@ from app.models.user import User
 
 PUBLIC_PATH_PREFIXES = (
     "/",
+    "/health",
     "/api/health",
+    "/api/v1/health",
     "/api/v1/tenancy/status",
     "/api/v1/auth/login",
     "/api/v1/auth/verify-otp",
