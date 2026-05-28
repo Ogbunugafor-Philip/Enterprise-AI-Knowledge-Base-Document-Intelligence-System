@@ -19,6 +19,7 @@ PUBLIC_PATH_PREFIXES = (
     "/api/v1/tenancy/status",
     "/api/v1/auth/login",
     "/api/v1/auth/verify-otp",
+    "/api/v1/auth/resend-otp",
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/reset-password",
     "/api/v1/setup/super-admin",

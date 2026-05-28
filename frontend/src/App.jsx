@@ -1,6 +1,10 @@
 import React from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { Building2, ShieldCheck, UserRoundCog } from "lucide-react";
+import HelpSection from "./components/HelpSection.jsx";
+import ChatHistory from "./pages/ChatHistory.jsx";
+import ChatInterface from "./pages/ChatInterface.jsx";
+import UserDashboard from "./pages/UserDashboard.jsx";
 
 function WorkspaceCard({ icon: Icon, title, description, to }) {
   return (
@@ -85,6 +89,11 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/dashboard" element={<UserDashboard />} />
+      <Route path="/chat" element={<ChatInterface />} />
+      <Route path="/chat/:sessionId" element={<ChatInterface />} />
+      <Route path="/history" element={<ChatHistory />} />
+      <Route path="/help" element={<HelpSection />} />
       <Route
         path="/user"
         element={<Workspace title="User Workspace" description="Tenant-scoped knowledge retrieval and document intelligence." />}
