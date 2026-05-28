@@ -89,9 +89,9 @@ export default function UserManagement() {
   }
 
   async function handleDelete(user) {
-    if (!window.confirm(`Delete user ${user.email}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete user "${user.first_name} ${user.last_name}" (${user.email})?\n\nThis cannot be undone.`)) return;
     const res = await superAdminApi.deleteUser(user.id);
-    if (res.ok) loadUsers();
+    if (res.ok) setUsers(prev => prev.filter(u => u.id !== user.id));
     else alert(res.error);
   }
 
@@ -113,7 +113,7 @@ export default function UserManagement() {
       render: r => <span className="font-medium text-gray-900">{r.first_name} {r.last_name}</span>,
     },
     { key: 'email', header: 'Email', sortable: true, accessor: 'email' },
-    { key: 'department', header: 'Department', accessor: r => r.department || '—' },
+    { key: 'department', header: 'Department', accessor: r => r.department_name || '—' },
     { key: 'role', header: 'Role', render: r => <RoleBadge role={r.role} /> },
     {
       key: 'status', header: 'Status',

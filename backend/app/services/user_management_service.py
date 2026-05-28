@@ -38,6 +38,7 @@ def _user_detail(user: User) -> UserDetailResponse:
         last_name=user.last_name,
         email=user.email,
         department_id=user.department_id,
+        department_name=user.department.name if user.department else None,
         organization_id=user.organization_id,
         role=user.role.name if user.role else None,
         is_active=user.is_active,
@@ -168,7 +169,7 @@ async def create_user(
             pass
 
     refreshed = await db.execute(
-        select(User).options(selectinload(User.role)).where(User.id == user.id)
+        select(User).options(selectinload(User.role), selectinload(User.department)).where(User.id == user.id)
     )
     return refreshed.scalar_one()
 
@@ -246,7 +247,7 @@ async def update_user(
         await log_action(db, organization_id=organization_id, user_id=updated_by_user_id, action="DEPARTMENT_CHANGED", resource_type="user", resource_id=str(user.id), old_value={"department_id": old_values["department_id"]}, new_value={"department_id": str(department_id)})
     await db.flush()
     refreshed = await db.execute(
-        select(User).options(selectinload(User.role)).where(User.id == user.id)
+        select(User).options(selectinload(User.role), selectinload(User.department)).where(User.id == user.id)
     )
     return refreshed.scalar_one()
 
@@ -425,7 +426,7 @@ async def get_user_list(
 
     offset = (page - 1) * page_size
     users_result = await db.execute(
-        base_query.options(selectinload(User.role)).order_by(User.created_at.desc()).limit(page_size).offset(offset)
+        base_query.options(selectinload(User.role), selectinload(User.department)).order_by(User.created_at.desc()).limit(page_size).offset(offset)
     )
     users = list(users_result.scalars().all())
 
@@ -442,7 +443,7 @@ async def get_user_detail(
     user_id: UUID,
     organization_id: UUID | None,
 ) -> UserDetailResponse | None:
-    query = select(User).options(selectinload(User.role)).where(User.id == user_id)
+    query = select(User).options(selectinload(User.role), selectinload(User.department)).where(User.id == user_id)
     if organization_id is not None:
         query = query.where(User.organization_id == organization_id)
     result = await db.execute(query)

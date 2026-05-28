@@ -41,6 +41,7 @@ class UserDetailResponse(BaseModel):
     last_name: str
     email: str
     department_id: UUID | None
+    department_name: str | None = None
     organization_id: UUID | None
     role: str | None
     is_active: bool
