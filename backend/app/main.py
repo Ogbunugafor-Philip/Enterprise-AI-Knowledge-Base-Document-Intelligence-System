@@ -15,12 +15,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.admin.documents import dashboard_router as admin_dashboard_router
+from app.api.v1.admin.documents import router as admin_documents_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.departments import router as departments_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.setup import router as setup_router
 from app.api.v1.users import router as users_router
 from app.core.data_isolation import IsolationViolationError
+from app.core.file_storage import ensure_upload_directory
 from app.middleware.auth_middleware import JWTAuthenticationMiddleware, PasswordExpiryMiddleware
 from app.middleware.rbac_middleware import RBACMiddleware
 
@@ -45,6 +48,7 @@ async def tenancy_status() -> dict[str, str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    ensure_upload_directory()
     logger.info("Starting Ent_RAG API in %s mode", os.getenv("ENVIRONMENT", "development"))
     yield
     logger.info("Stopping Ent_RAG API")
@@ -82,6 +86,8 @@ app.include_router(roles_router, prefix="/api/v1")
 app.include_router(departments_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
+app.include_router(admin_documents_router, prefix="/api/v1")
+app.include_router(admin_dashboard_router, prefix="/api/v1")
 
 
 @app.exception_handler(IsolationViolationError)

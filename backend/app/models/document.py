@@ -15,6 +15,9 @@ document_status_enum = Enum(
     "approved",
     "rejected",
     "archived",
+    "failed",
+    "deleted",
+    "expired",
     name="document_status",
 )
 
