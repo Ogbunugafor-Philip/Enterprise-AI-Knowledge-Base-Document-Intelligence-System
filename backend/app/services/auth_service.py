@@ -15,6 +15,7 @@ from app.core.security import (
     validate_password_strength,
     verify_password,
 )
+from app.core.encryption import hash_sensitive_data
 from app.core.email import send_otp_verification_email
 from app.models.audit import AuditLog
 from app.models.auth import OTPVerification, PasswordHistory
@@ -41,19 +42,20 @@ async def log_audit_event(
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> None:
-    db.add(
-        AuditLog(
-            organization_id=organization_id,
-            user_id=user_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            status=status_value,
-            old_value=old_value,
-            new_value=new_value,
-            ip_address=ip_address,
-            user_agent=user_agent,
-        )
+    from app.services.audit_service import log_action
+
+    await log_action(
+        db,
+        organization_id=organization_id,
+        user_id=user_id,
+        action=action.upper(),
+        resource_type=resource_type,
+        resource_id=resource_id,
+        status=status_value,
+        old_value=old_value,
+        new_value=new_value,
+        ip_address=ip_address,
+        user_agent=user_agent,
     )
 
 
@@ -61,11 +63,19 @@ async def handle_failed_login(db: AsyncSession, user: User) -> None:
     user.failed_login_attempts += 1
     if user.failed_login_attempts >= LOCKOUT_THRESHOLD:
         user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+        await log_audit_event(
+            db,
+            organization_id=user.organization_id,
+            user_id=user.id,
+            action="ACCOUNT_LOCKED",
+            resource_type="auth",
+            status_value="failed",
+        )
     await log_audit_event(
         db,
         organization_id=user.organization_id,
         user_id=user.id,
-        action="login_failed",
+        action="LOGIN_FAILED",
         resource_type="auth",
         status_value="failed",
     )
@@ -109,7 +119,7 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> tupl
 
     if not user.is_verified:
         otp = await create_otp_for_user(db, user, otp_type="verification")
-        await send_otp_verification_email(user.email, otp.otp_code)
+        await send_otp_verification_email(user.email, getattr(otp, "plain_otp_code", otp.otp_code))
         await log_audit_event(
             db,
             organization_id=user.organization_id,
@@ -138,7 +148,7 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> tupl
         db,
         organization_id=user.organization_id,
         user_id=user.id,
-        action="login_success",
+        action="LOGIN_SUCCESS",
         resource_type="auth",
     )
     await db.commit()
@@ -157,13 +167,17 @@ async def create_otp_for_user(db: AsyncSession, user: User, otp_type: str = "ver
         )
         .values(is_used=True)
     )
+    code = generate_otp_code()
+    code_hash = hash_sensitive_data(code)
     otp = OTPVerification(
         organization_id=user.organization_id,
         user_id=user.id,
-        otp_code=generate_otp_code(),
+        otp_code=code_hash,
+        otp_code_hash=code_hash,
         otp_type=otp_type,
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
     )
+    setattr(otp, "plain_otp_code", code)
     db.add(otp)
     await db.flush()
     return otp
@@ -180,7 +194,7 @@ async def verify_user_otp(db: AsyncSession, email: str, otp_code: str) -> User:
         .where(
             OTPVerification.user_id == user.id,
             OTPVerification.organization_id == user.organization_id,
-            OTPVerification.otp_code == otp_code,
+            OTPVerification.otp_code_hash == hash_sensitive_data(otp_code),
             OTPVerification.otp_type == "verification",
             OTPVerification.is_used.is_(False),
         )
@@ -196,7 +210,7 @@ async def verify_user_otp(db: AsyncSession, email: str, otp_code: str) -> User:
         db,
         organization_id=user.organization_id,
         user_id=user.id,
-        action="otp_verified",
+        action="OTP_VERIFIED",
         resource_type="auth",
     )
     await db.commit()
@@ -250,7 +264,7 @@ async def change_user_password(
         db,
         organization_id=user.organization_id,
         user_id=user.id,
-        action="password_changed",
+        action="PASSWORD_CHANGED",
         resource_type="auth",
     )
     await db.commit()
@@ -269,6 +283,7 @@ async def enforce_30_day_password_expiry(user: User) -> None:
 
 async def generate_password_reset_token(db: AsyncSession, user: User) -> str:
     token = secrets.token_urlsafe(48)
+    token_hash = hash_sensitive_data(token)
     await db.execute(
         update(OTPVerification)
         .where(
@@ -283,7 +298,8 @@ async def generate_password_reset_token(db: AsyncSession, user: User) -> str:
         OTPVerification(
             organization_id=user.organization_id,
             user_id=user.id,
-            otp_code=token,
+            otp_code=token_hash,
+            otp_code_hash=token_hash,
             otp_type="password_reset",
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
         )
@@ -297,7 +313,7 @@ async def validate_password_reset_token(db: AsyncSession, reset_token: str) -> t
         select(OTPVerification, User)
         .join(User, User.id == OTPVerification.user_id)
         .where(
-            OTPVerification.otp_code == reset_token,
+            OTPVerification.otp_code_hash == hash_sensitive_data(reset_token),
             OTPVerification.otp_type == "password_reset",
             OTPVerification.is_used.is_(False),
         )

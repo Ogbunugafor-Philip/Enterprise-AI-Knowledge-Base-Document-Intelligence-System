@@ -21,6 +21,7 @@ class User(Base):
     first_name: Mapped[str] = mapped_column(String(120), nullable=False)
     last_name: Mapped[str] = mapped_column(String(120), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    email_encrypted: Mapped[str | None] = mapped_column(String(2048))
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -43,3 +44,11 @@ class User(Base):
     approved_documents: Mapped[list["Document"]] = relationship(back_populates="approver", foreign_keys="Document.approved_by")
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")
     messages: Mapped[list["Message"]] = relationship(back_populates="user")
+
+    @property
+    def encrypted_email(self) -> str | None:
+        return self.email_encrypted
+
+    @encrypted_email.setter
+    def encrypted_email(self, value: str | None) -> None:
+        self.email_encrypted = value

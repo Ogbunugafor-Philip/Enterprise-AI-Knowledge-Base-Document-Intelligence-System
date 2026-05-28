@@ -116,15 +116,8 @@ async def delete_session(
     session, _ = await get_session_messages(db, current_user, session_id)
     if session is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chat session access denied")
-    db.add(
-        AuditLog(
-            organization_id=current_user.organization_id,
-            user_id=current_user.id,
-            action="chat_session_deleted",
-            resource_type="chat_session",
-            resource_id=str(session.id),
-        )
-    )
+    from app.services.audit_service import log_action
+    await log_action(db, organization_id=current_user.organization_id, user_id=current_user.id, action="CHAT_SESSION_DELETED", resource_type="chat_session", resource_id=str(session.id))
     await db.delete(session)
     await db.commit()
     return {"message": "Chat session deleted"}

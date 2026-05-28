@@ -73,12 +73,12 @@ async def resend_otp(payload: PasswordResetRequest, db: Annotated[AsyncSession, 
     user = result.scalars().first()
     if user is not None:
         otp = await create_otp_for_user(db, user, otp_type="verification")
-        await send_otp_verification_email(user.email, otp.otp_code)
+        await send_otp_verification_email(user.email, getattr(otp, "plain_otp_code", otp.otp_code))
         await log_audit_event(
             db,
             organization_id=user.organization_id,
             user_id=user.id,
-            action="otp_resent",
+            action="OTP_RESENT",
             resource_type="auth",
         )
         await db.commit()
@@ -115,7 +115,7 @@ async def forgot_password(
             db,
             organization_id=user.organization_id,
             user_id=user.id,
-            action="password_reset_requested",
+            action="PASSWORD_RESET_REQUESTED",
             resource_type="auth",
         )
         await db.commit()
@@ -153,7 +153,7 @@ async def reset_password(
         db,
         organization_id=user.organization_id,
         user_id=user.id,
-        action="password_reset_completed",
+        action="PASSWORD_RESET_COMPLETED",
         resource_type="auth",
     )
     await db.commit()
@@ -170,7 +170,7 @@ async def logout(
         db,
         organization_id=current_user.organization_id,
         user_id=current_user.id,
-        action="logout",
+        action="LOGOUT",
         resource_type="auth",
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),

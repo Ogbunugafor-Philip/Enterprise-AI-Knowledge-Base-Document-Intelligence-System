@@ -47,6 +47,8 @@ async def create_document_version(
         if doc.status == "approved":
             doc.status = "archived"
             doc.is_approved = False
+            from app.services.audit_service import log_action
+            await log_action(db, organization_id=current_user.organization_id, user_id=current_user.id, action="DOCUMENT_ARCHIVED", resource_type="document", resource_id=str(doc.id), new_value={"reason": "new_version_uploaded"})
 
     file_size_mb = Decimal(str(round(len(file_content) / (1024 * 1024), 2)))
     new_doc = Document(
@@ -69,19 +71,20 @@ async def create_document_version(
     )
     db.add(new_doc)
 
-    db.add(
-        AuditLog(
-            organization_id=current_user.organization_id,
-            user_id=current_user.id,
-            action="DOCUMENT_VERSION_CREATED",
-            resource_type="document",
-            resource_id=str(new_doc.id),
-            new_value={
-                "version_number": next_version,
-                "parent_document_id": str(parent_document_id),
-                "title": title,
-            },
-        )
+    from app.services.audit_service import log_action
+
+    await log_action(
+        db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        action="DOCUMENT_VERSION_CREATED",
+        resource_type="document",
+        resource_id=str(new_doc.id),
+        new_value={
+            "version_number": next_version,
+            "parent_document_id": str(parent_document_id),
+            "title": title,
+        },
     )
     await db.flush()
     return new_doc
@@ -137,24 +140,27 @@ async def rollback_to_version(
         if doc.status == "approved":
             doc.status = "archived"
             doc.is_approved = False
+            from app.services.audit_service import log_action
+            await log_action(db, organization_id=current_user.organization_id, user_id=current_user.id, action="DOCUMENT_ARCHIVED", resource_type="document", resource_id=str(doc.id), new_value={"reason": "version_rollback"})
 
     target.status = "approved"
     target.is_approved = True
     target.approved_by = current_user.id
     target.approved_at = datetime.now(timezone.utc)
 
-    db.add(
-        AuditLog(
-            organization_id=current_user.organization_id,
-            user_id=current_user.id,
-            action="DOCUMENT_VERSION_ROLLBACK",
-            resource_type="document",
-            resource_id=str(target.id),
-            new_value={
-                "rolled_back_to_version": target.version_number,
-                "document_id": str(document_id),
-            },
-        )
+    from app.services.audit_service import log_action
+
+    await log_action(
+        db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        action="DOCUMENT_VERSION_ROLLBACK",
+        resource_type="document",
+        resource_id=str(target.id),
+        new_value={
+            "rolled_back_to_version": target.version_number,
+            "document_id": str(document_id),
+        },
     )
     await db.flush()
     return target

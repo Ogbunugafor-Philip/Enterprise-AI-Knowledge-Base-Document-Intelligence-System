@@ -88,6 +88,8 @@ async def upload_document(
         embedding_status="pending",
     )
     db.add(document)
+    from app.services.audit_service import log_action
+    await log_action(db, user_id=current_user.id, organization_id=current_user.organization_id, action="DOCUMENT_UPLOADED", resource_type="document", resource_id=str(document.id), new_value={"title": title, "file_name": document.file_name})
     await db.commit()
     try:
         from worker.tasks.document_tasks import process_document_task
@@ -183,7 +185,8 @@ async def delete_document(document_id: UUID, db: Annotated[AsyncSession, Depends
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     document.status = "deleted"
-    db.add(AuditLog(organization_id=current_user.organization_id, user_id=current_user.id, action="document_deleted", resource_type="document", resource_id=str(document.id)))
+    from app.services.audit_service import log_action
+    await log_action(db, organization_id=current_user.organization_id, user_id=current_user.id, action="DOCUMENT_DELETED", resource_type="document", resource_id=str(document.id))
     await db.commit()
     try:
         from worker.tasks.document_tasks import delete_document_embeddings_task

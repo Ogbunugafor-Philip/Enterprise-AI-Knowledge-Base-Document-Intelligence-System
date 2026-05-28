@@ -69,19 +69,20 @@ async def approve_document(
     document.approved_at = datetime.now(timezone.utc)
     document.rejection_reason = None
 
-    db.add(
-        AuditLog(
-            organization_id=current_user.organization_id,
-            user_id=current_user.id,
-            action="DOCUMENT_APPROVED",
-            resource_type="document",
-            resource_id=str(document.id),
-            new_value={
-                "status": "approved",
-                "approved_by": str(current_user.id),
-                "access_level": access_level,
-            },
-        )
+    from app.services.audit_service import log_action
+
+    await log_action(
+        db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        action="DOCUMENT_APPROVED",
+        resource_type="document",
+        resource_id=str(document.id),
+        new_value={
+            "status": "approved",
+            "approved_by": str(current_user.id),
+            "access_level": access_level,
+        },
     )
     await db.flush()
     return document
@@ -109,15 +110,16 @@ async def reject_document(
     document.approved_by = None
     document.approved_at = None
 
-    db.add(
-        AuditLog(
-            organization_id=current_user.organization_id,
-            user_id=current_user.id,
-            action="DOCUMENT_REJECTED",
-            resource_type="document",
-            resource_id=str(document.id),
-            new_value={"status": "rejected", "rejection_reason": rejection_reason},
-        )
+    from app.services.audit_service import log_action
+
+    await log_action(
+        db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        action="DOCUMENT_REJECTED",
+        resource_type="document",
+        resource_id=str(document.id),
+        new_value={"status": "rejected", "rejection_reason": rejection_reason},
     )
 
     try:

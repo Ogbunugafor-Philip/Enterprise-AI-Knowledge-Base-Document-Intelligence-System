@@ -8,6 +8,7 @@ from app.core.database import SessionLocal
 from app.models.document import Document, DocumentChunk
 from app.models.monitoring import MonitoringLog
 from app.services import chunking_service, document_processor_service, embedding_service, malware_scan_service
+from app.services.audit_service import log_action
 
 
 async def _process_document(document_id: str) -> None:
@@ -18,6 +19,7 @@ async def _process_document(document_id: str) -> None:
             return
         try:
             document.status = "processing"
+            await log_action(db, user_id=document.uploaded_by, organization_id=document.organization_id, action="DOCUMENT_PROCESSING_STARTED", resource_type="document", resource_id=str(document.id))
             await db.flush()
             scan = malware_scan_service.scan_file_with_clamd(document.file_path)
             if scan["scan_status"] == "unavailable":
@@ -39,12 +41,14 @@ async def _process_document(document_id: str) -> None:
             document.embedding_status = "completed"
             document.chunk_count = len(saved_chunks)
             db.add(MonitoringLog(organization_id=document.organization_id, event_type="document_processed", service_name="worker", status_code=200))
+            await log_action(db, user_id=document.uploaded_by, organization_id=document.organization_id, action="DOCUMENT_PROCESSING_COMPLETED", resource_type="document", resource_id=str(document.id), new_value={"chunk_count": len(saved_chunks)})
             await db.commit()
         except Exception as exc:
             document.status = "failed"
             document.embedding_status = "failed"
             document.malware_scan_result = str(exc)
             db.add(MonitoringLog(organization_id=document.organization_id, event_type="document_processing_failed", service_name="worker", error_message=str(exc), status_code=500))
+            await log_action(db, user_id=document.uploaded_by, organization_id=document.organization_id, action="DOCUMENT_PROCESSING_FAILED", resource_type="document", resource_id=str(document.id), status="failed", new_value={"error": str(exc)})
             await db.commit()
 
 
@@ -59,6 +63,7 @@ async def _reprocess_document(document_id: str) -> None:
         if document is not None:
             await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
             embedding_service.delete_document_embeddings(None, document.organization_id, document.id)
+            await log_action(db, user_id=document.uploaded_by, organization_id=document.organization_id, action="DOCUMENT_REPROCESSED", resource_type="document", resource_id=str(document.id))
             await db.commit()
     await _process_document(document_id)
 

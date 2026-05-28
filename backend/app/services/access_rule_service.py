@@ -36,20 +36,21 @@ async def create_access_rule(
         granted_by=current_user.id,
     )
     db.add(rule)
-    db.add(
-        AuditLog(
-            organization_id=current_user.organization_id,
-            user_id=current_user.id,
-            action="DOCUMENT_ACCESS_RULE_CREATED",
-            resource_type="document_access",
-            resource_id=str(document_id),
-            new_value={
-                "access_type": access_type,
-                "department_id": str(department_id) if department_id else None,
-                "role_id": str(role_id) if role_id else None,
-                "user_id": str(user_id) if user_id else None,
-            },
-        )
+    from app.services.audit_service import log_action
+
+    await log_action(
+        db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        action="DOCUMENT_ACCESS_RULE_CREATED",
+        resource_type="document_access",
+        resource_id=str(document_id),
+        new_value={
+            "access_type": access_type,
+            "department_id": str(department_id) if department_id else None,
+            "role_id": str(role_id) if role_id else None,
+            "user_id": str(user_id) if user_id else None,
+        },
     )
     await db.flush()
     return rule
@@ -85,18 +86,19 @@ async def delete_access_rule(
     if rule is None:
         return False
 
-    db.add(
-        AuditLog(
-            organization_id=current_user.organization_id,
-            user_id=current_user.id,
-            action="DOCUMENT_ACCESS_RULE_DELETED",
-            resource_type="document_access",
-            resource_id=str(rule.document_id),
-            old_value={
-                "rule_id": str(rule.id),
-                "access_type": rule.access_type,
-            },
-        )
+    from app.services.audit_service import log_action
+
+    await log_action(
+        db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        action="DOCUMENT_ACCESS_RULE_DELETED",
+        resource_type="document_access",
+        resource_id=str(rule.document_id),
+        old_value={
+            "rule_id": str(rule.id),
+            "access_type": rule.access_type,
+        },
     )
     await db.delete(rule)
     await db.flush()

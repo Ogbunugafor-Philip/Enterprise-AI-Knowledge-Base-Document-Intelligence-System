@@ -24,6 +24,7 @@ from app.api.v1.admin.documents import dashboard_router as admin_dashboard_route
 from app.api.v1.admin.documents import router as admin_documents_router
 from app.api.v1.admin.versions import router as admin_versions_router
 from app.api.v1.chat import router as chat_router
+from app.api.v1.compliance import router as compliance_router
 from app.api.v1.departments import router as departments_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.setup import router as setup_router
@@ -102,6 +103,7 @@ app.include_router(admin_access_rules_router, prefix="/api/v1")
 app.include_router(superadmin_users_router, prefix="/api/v1")
 app.include_router(rag_analytics_router, prefix="/api/v1")
 app.include_router(monitoring_router, prefix="/api/v1")
+app.include_router(compliance_router, prefix="/api/v1")
 
 
 @app.exception_handler(IsolationViolationError)

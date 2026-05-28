@@ -18,7 +18,11 @@ def get_user_permissions(user: User) -> list[PermissionEnum]:
 async def check_document_access(db: AsyncSession, user: User, document: Document) -> bool:
     from app.services.access_rule_service import check_user_document_access
 
-    return await check_user_document_access(db, user, document)
+    allowed = await check_user_document_access(db, user, document)
+    if not allowed:
+        from app.services.audit_service import log_action
+        await log_action(db, organization_id=user.organization_id, user_id=user.id, action="PERMISSION_DENIED", resource_type="document", resource_id=str(document.id), status="blocked")
+    return allowed
 
 
 def check_chat_isolation(user: User, session: ChatSession) -> bool:
@@ -40,3 +44,13 @@ def filter_by_tenant(query, model, organization_id: UUID | None):
     if organization_id is None:
         return query
     return query.where(model.organization_id == organization_id)
+
+
+async def log_role_bypass_attempt(db: AsyncSession, user: User, resource_type: str, resource_id: str | None = None) -> None:
+    from app.services.audit_service import log_action
+    await log_action(db, organization_id=user.organization_id, user_id=user.id, action="ROLE_BYPASS_ATTEMPTED", resource_type=resource_type, resource_id=resource_id, status="blocked")
+
+
+async def log_isolation_violation(db: AsyncSession, user: User, resource_type: str, resource_id: str | None = None) -> None:
+    from app.services.audit_service import log_action
+    await log_action(db, organization_id=user.organization_id, user_id=user.id, action="ISOLATION_VIOLATION", resource_type=resource_type, resource_id=resource_id, status="blocked")

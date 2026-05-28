@@ -1,15 +1,18 @@
 import React from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { Building2, ShieldCheck, UserRoundCog } from "lucide-react";
+import DataRetentionSettings from "./components/DataRetentionSettings.jsx";
 import HelpSection from "./components/HelpSection.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import AITrustReport from "./pages/AITrustReport.jsx";
+import AuditLogs from "./pages/AuditLogs.jsx";
 import AlertsPanel from "./pages/AlertsPanel.jsx";
 import ApprovalQueue from "./pages/ApprovalQueue.jsx";
 import DebuggingAssistant from "./pages/DebuggingAssistant.jsx";
 import MonitoringDashboard from "./pages/MonitoringDashboard.jsx";
 import ChatHistory from "./pages/ChatHistory.jsx";
 import ChatInterface from "./pages/ChatInterface.jsx";
+import ComplianceReports from "./pages/ComplianceReports.jsx";
 import DocumentManagement from "./pages/DocumentManagement.jsx";
 import DocumentVersions from "./pages/DocumentVersions.jsx";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
@@ -120,6 +123,9 @@ export default function App() {
       <Route path="/monitoring/alerts" element={<AlertsPanel />} />
       <Route path="/monitoring/debugging" element={<DebuggingAssistant />} />
       <Route path="/monitoring/ai-trust" element={<AITrustReport />} />
+      <Route path="/compliance/audit-logs" element={<AuditLogs />} />
+      <Route path="/compliance/reports" element={<ComplianceReports />} />
+      <Route path="/compliance/retention" element={<DataRetentionSettings />} />
       <Route path="/superadmin/dashboard" element={<SuperAdminDashboard />} />
       <Route path="/superadmin/users" element={<UserManagement />} />
       <Route

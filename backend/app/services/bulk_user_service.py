@@ -82,7 +82,6 @@ async def process_bulk_upload(
     from app.models.role import Role
     from app.core.permissions import RoleEnum, normalize_role
     from app.services.user_management_service import create_user
-    from app.models.audit import AuditLog
 
     parsed_rows, parse_errors = parse_excel_file(file_bytes)
 
@@ -171,18 +170,19 @@ async def process_bulk_upload(
             row_errors.append(BulkUserError(row_number=row_num, email=email, error_reason=str(exc)))
 
     total_rows = len(parsed_rows)
-    db.add(
-        AuditLog(
-            organization_id=organization_id,
-            user_id=created_by_user_id,
-            action="BULK_USER_UPLOAD",
-            resource_type="user",
-            new_value={
-                "total_rows": total_rows,
-                "created": len(created_users),
-                "failed": len(row_errors),
-            },
-        )
+    from app.services.audit_service import log_action
+
+    await log_action(
+        db,
+        organization_id=organization_id,
+        user_id=created_by_user_id,
+        action="BULK_USER_UPLOAD",
+        resource_type="user",
+        new_value={
+            "total_rows": total_rows,
+            "created": len(created_users),
+            "failed": len(row_errors),
+        },
     )
     await db.flush()
 

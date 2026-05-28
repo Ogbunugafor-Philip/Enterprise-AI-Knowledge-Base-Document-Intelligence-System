@@ -4,7 +4,6 @@ from uuid import UUID
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.audit import AuditLog
 from app.models.chat import ChatSession, Message
 from app.models.monitoring import MonitoringLog
 from app.models.user import User
@@ -20,6 +19,8 @@ async def create_chat_session(db: AsyncSession, user: User, title: str | None = 
     )
     db.add(session)
     await db.flush()
+    from app.services.audit_service import log_action
+    await log_action(db, organization_id=user.organization_id, user_id=user.id, action="CHAT_SESSION_CREATED", resource_type="chat_session", resource_id=str(session.id))
     return session
 
 
@@ -127,15 +128,15 @@ async def submit_message_feedback(db: AsyncSession, user: User, message_id: UUID
         return None
     message.feedback = feedback_type
     message.feedback_submitted_at = datetime.now(timezone.utc)
-    db.add(
-        AuditLog(
-            organization_id=user.organization_id,
-            user_id=user.id,
-            action="chat_feedback_submitted",
-            resource_type="message",
-            resource_id=str(message.id),
-            new_value={"feedback": feedback_type, "note": feedback_note},
-        )
+    from app.services.audit_service import log_action
+    await log_action(
+        db,
+        organization_id=user.organization_id,
+        user_id=user.id,
+        action="HALLUCINATION_REPORTED" if feedback_type == "hallucination" else "FEEDBACK_SUBMITTED",
+        resource_type="message",
+        resource_id=str(message.id),
+        new_value={"feedback": feedback_type, "note": feedback_note},
     )
     await db.flush()
     return message
@@ -154,6 +155,15 @@ async def track_ai_usage(db: AsyncSession, user: User, response_time_ms: int, to
             user_id=user.id,
             token_usage=token_usage,
         )
+    )
+    from app.services.audit_service import log_action
+    await log_action(
+        db,
+        organization_id=user.organization_id,
+        user_id=user.id,
+        action="AI_QUERY_MADE",
+        resource_type="chat",
+        new_value={"response_time_ms": response_time_ms, "token_usage": token_usage},
     )
 
 

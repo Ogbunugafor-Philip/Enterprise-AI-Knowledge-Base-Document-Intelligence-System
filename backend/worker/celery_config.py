@@ -14,6 +14,7 @@ celery_app = Celery(
         "worker.tasks.document_tasks",
         "worker.tasks.embedding_generation",
         "worker.tasks.monitoring",
+        "worker.tasks.compliance",
     ],
 )
 
@@ -32,6 +33,7 @@ celery_app.conf.update(
         "document_processing.delete_document_embeddings_task": {"queue": "document_queue"},
         "embedding_generation.*": {"queue": "embedding_generation"},
         "monitoring.*": {"queue": "monitoring"},
+        "compliance.*": {"queue": "compliance"},
     },
     task_default_queue="default",
     task_default_retry_delay=30,
@@ -50,6 +52,22 @@ celery_app.conf.update(
         "cleanup-old-monitoring-logs": {
             "task": "monitoring.cleanup_old_monitoring_logs",
             "schedule": crontab(hour=2, minute=0),
+        },
+        "compliance-monitoring-cleanup": {
+            "task": "compliance.run_monitoring_cleanup",
+            "schedule": crontab(hour=2, minute=0),
+        },
+        "compliance-chat-retention": {
+            "task": "compliance.run_chat_retention",
+            "schedule": crontab(hour=3, minute=0),
+        },
+        "compliance-document-retention": {
+            "task": "compliance.run_document_retention",
+            "schedule": crontab(hour=3, minute=0),
+        },
+        "compliance-audit-integrity-check": {
+            "task": "compliance.run_audit_integrity_check",
+            "schedule": crontab(hour=1, minute=0, day_of_week="sun"),
         },
     },
 )
