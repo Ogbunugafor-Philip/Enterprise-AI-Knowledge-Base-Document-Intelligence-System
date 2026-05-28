@@ -8,12 +8,20 @@ function headers(json = true) {
   };
 }
 
+function formatError(data) {
+  const d = data?.detail;
+  if (!d) return data?.message || "Request failed";
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) return d.map((e) => e.msg || String(e)).join(", ");
+  return String(d);
+}
+
 async function request(path, options = {}) {
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, options);
     if (response.status === 204) return { ok: true, status: 204, error: null, data: null };
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) return { ok: false, status: response.status, error: data.detail || "Request failed", data: null };
+    if (!response.ok) return { ok: false, status: response.status, error: formatError(data), data: null };
     return { ok: true, status: response.status, error: null, data };
   } catch (error) {
     return { ok: false, status: 0, error: error.message, data: null };
@@ -81,13 +89,16 @@ export const superAdminApi = {
     request(`/api/v1/superadmin/organizations/${id}`, { method: "DELETE", headers: headers() }),
 
   getRoles: () =>
-    request("/api/v1/superadmin/roles", { headers: headers() }),
+    request("/api/v1/roles", { headers: headers() }),
 
   createRole: (body) =>
-    request("/api/v1/superadmin/roles", { method: "POST", headers: headers(), body: JSON.stringify(body) }),
+    request("/api/v1/roles", { method: "POST", headers: headers(), body: JSON.stringify(body) }),
 
   getRolePermissions: (id) =>
-    request(`/api/v1/superadmin/roles/${id}/permissions`, { headers: headers() }),
+    request(`/api/v1/roles/${id}/permissions`, { headers: headers() }),
+
+  getDepartments: (params = {}) =>
+    request(`/api/v1/departments?${new URLSearchParams(params)}`, { headers: headers() }),
 
   getRecentActivity: () =>
     request("/api/v1/superadmin/activity/recent", { headers: headers() }),
