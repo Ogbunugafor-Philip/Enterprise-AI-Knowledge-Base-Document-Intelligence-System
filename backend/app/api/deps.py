@@ -21,7 +21,7 @@ async def get_current_user(
     try:
         payload = decode_access_token(token)
         user_id = UUID(str(payload["sub"]))
-        organization_id = UUID(str(payload["organization_id"]))
+        organization_id = UUID(str(payload["organization_id"])) if payload.get("organization_id") else None
     except (KeyError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -38,6 +38,18 @@ async def get_current_user(
 
 
 async def get_current_active_user(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    current_user = await get_current_active_user_allow_password_change(current_user)
+    if current_user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password change required. Please change your temporary password before accessing the platform.",
+        )
+    return current_user
+
+
+async def get_current_active_user_allow_password_change(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
     if not current_user.is_active:
@@ -61,7 +73,7 @@ def require_role(required_role: str) -> Callable:
 
 async def get_organization_id(
     current_user: Annotated[User, Depends(get_current_active_user)],
-) -> UUID:
+) -> UUID | None:
     return current_user.organization_id
 
 

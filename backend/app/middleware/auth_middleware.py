@@ -20,6 +20,7 @@ PUBLIC_PATH_PREFIXES = (
     "/api/v1/auth/resend-otp",
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/reset-password",
+    "/api/v1/setup/super-admin",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -48,7 +49,7 @@ class JWTAuthenticationMiddleware(BaseHTTPMiddleware):
         try:
             payload = decode_access_token(token)
             user_id = UUID(str(payload["sub"]))
-            organization_id = UUID(str(payload["organization_id"]))
+            organization_id = UUID(str(payload["organization_id"])) if payload.get("organization_id") else None
         except Exception:
             return JSONResponse(
                 {"detail": "Invalid authentication token"},

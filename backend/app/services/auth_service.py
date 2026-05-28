@@ -15,6 +15,7 @@ from app.core.security import (
     validate_password_strength,
     verify_password,
 )
+from app.core.email import send_otp_verification_email
 from app.models.audit import AuditLog
 from app.models.auth import OTPVerification, PasswordHistory
 from app.models.organization import Organization
@@ -29,7 +30,7 @@ PASSWORD_EXPIRY_DAYS = 30
 async def log_audit_event(
     db: AsyncSession,
     *,
-    organization_id: UUID,
+    organization_id: UUID | None,
     user_id: UUID | None,
     action: str,
     resource_type: str,
@@ -94,23 +95,41 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> tupl
 
     check_account_lock(user)
 
-    org_result = await db.execute(
-        select(Organization).where(Organization.id == user.organization_id, Organization.is_active.is_(True))
-    )
-    if org_result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organization is inactive")
+    if user.organization_id is not None:
+        org_result = await db.execute(
+            select(Organization).where(Organization.id == user.organization_id, Organization.is_active.is_(True))
+        )
+        if org_result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organization is inactive")
 
     if not verify_password(password, user.hashed_password):
         await handle_failed_login(db, user)
         await db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
+    if not user.is_verified:
+        otp = await create_otp_for_user(db, user, otp_type="verification")
+        await send_otp_verification_email(user.email, otp.otp_code)
+        await log_audit_event(
+            db,
+            organization_id=user.organization_id,
+            user_id=user.id,
+            action="LOGIN_BLOCKED_UNVERIFIED",
+            resource_type="auth",
+            status_value="failed",
+        )
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required. Please check your email and verify your OTP before logging in.",
+        )
+
     await reset_failed_login_attempts(db, user)
     await enforce_30_day_password_expiry(user)
     token = create_access_token(
         {
             "sub": str(user.id),
-            "organization_id": str(user.organization_id),
+            "organization_id": str(user.organization_id) if user.organization_id else None,
             "email": user.email,
             "role": user.role.name if user.role else None,
         }
@@ -281,7 +300,6 @@ async def validate_password_reset_token(db: AsyncSession, reset_token: str) -> t
             OTPVerification.otp_code == reset_token,
             OTPVerification.otp_type == "password_reset",
             OTPVerification.is_used.is_(False),
-            OTPVerification.organization_id == User.organization_id,
         )
     )
     row = result.first()

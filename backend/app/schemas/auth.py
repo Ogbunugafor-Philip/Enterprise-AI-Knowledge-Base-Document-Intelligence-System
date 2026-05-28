@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -13,7 +14,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     first_name: str
     last_name: str
-    organization_id: UUID
+    organization_id: UUID | None
     department_id: UUID | None
     role: str | None
     is_active: bool
@@ -53,10 +54,23 @@ class PasswordResetConfirm(BaseModel):
 
 class TokenData(BaseModel):
     user_id: UUID
-    organization_id: UUID
+    organization_id: UUID | None
     role: str | None = None
     email: EmailStr
 
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class SuperAdminSetupRequest(BaseModel):
+    first_name: str = Field(min_length=1, max_length=120)
+    last_name: str = Field(min_length=1, max_length=120)
+    email: EmailStr
+    password: str
+
+
+class SuperAdminSetupResponse(BaseModel):
+    message: str
+    email: EmailStr
+    created_at: datetime

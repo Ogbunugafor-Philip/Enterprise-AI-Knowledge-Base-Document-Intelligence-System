@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_active_user
+from app.api.deps import get_current_active_user_allow_password_change
 from app.core.database import get_db
 from app.core.email import send_otp_verification_email, send_password_reset_email
 from app.core.security import hash_password, validate_password_strength
@@ -88,7 +88,7 @@ async def resend_otp(payload: PasswordResetRequest, db: Annotated[AsyncSession, 
 @router.post("/change-password", response_model=MessageResponse)
 async def change_password(
     payload: PasswordChangeRequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(get_current_active_user_allow_password_change)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> MessageResponse:
     await change_user_password(
@@ -163,7 +163,7 @@ async def reset_password(
 @router.post("/logout", response_model=MessageResponse)
 async def logout(
     request: Request,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(get_current_active_user_allow_password_change)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> MessageResponse:
     await log_audit_event(
@@ -180,5 +180,5 @@ async def logout(
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(current_user: Annotated[User, Depends(get_current_active_user)]) -> UserResponse:
+async def me(current_user: Annotated[User, Depends(get_current_active_user_allow_password_change)]) -> UserResponse:
     return _user_response(current_user)

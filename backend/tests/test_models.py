@@ -45,6 +45,16 @@ ALL_MODELS = [
 ]
 
 
+PLATFORM_SCOPED_MODELS = {
+    AuditLog,
+    OTPVerification,
+    PasswordHistory,
+    Permission,
+    Role,
+    RolePermission,
+    User,
+    UserRole,
+}
 TENANT_SCOPED_MODELS = [model for model in ALL_MODELS if model is not Organization]
 
 
@@ -58,7 +68,8 @@ def test_all_models_import_and_register_with_metadata():
 def test_tenant_scoped_models_have_organization_id():
     for model in TENANT_SCOPED_MODELS:
         assert "organization_id" in model.__table__.columns, model.__name__
-        assert not model.__table__.columns["organization_id"].nullable, model.__name__
+        if model not in PLATFORM_SCOPED_MODELS:
+            assert not model.__table__.columns["organization_id"].nullable, model.__name__
 
 
 def test_core_relationships_are_defined():

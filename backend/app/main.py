@@ -14,6 +14,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.setup import router as setup_router
 from app.middleware.auth_middleware import JWTAuthenticationMiddleware, PasswordExpiryMiddleware
 
 logger = logging.getLogger("ent_rag")
@@ -68,6 +69,7 @@ app.add_middleware(JWTAuthenticationMiddleware)
 
 app.include_router(api_router)
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(setup_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["root"])
