@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from typing import Annotated, Callable
 from uuid import UUID
 
@@ -8,10 +9,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.permissions import PermissionEnum, RoleEnum, has_permission, normalize_role
 from app.core.security import decode_access_token
 from app.models.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
+@dataclass(frozen=True)
+class TenantContext:
+    organization_id: UUID | None
+    user_id: UUID
+    role: RoleEnum | None
 
 
 async def get_current_user(
@@ -59,22 +68,70 @@ async def get_current_active_user_allow_password_change(
     return current_user
 
 
-def require_role(required_role: str) -> Callable:
+def require_role(allowed_roles: list[RoleEnum | str]) -> Callable:
     async def role_dependency(
         current_user: Annotated[User, Depends(get_current_active_user)],
     ) -> User:
-        role_name = current_user.role.name if current_user.role else None
-        if role_name != required_role:
+        role = normalize_role(current_user.role.name if current_user.role else None)
+        normalized_allowed = {normalize_role(role_name) for role_name in allowed_roles}
+        if role not in normalized_allowed:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        if role != RoleEnum.SUPER_ADMIN and current_user.organization_id is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organization context required")
         return current_user
 
     return role_dependency
+
+
+def require_permission(permission: PermissionEnum) -> Callable:
+    async def permission_dependency(
+        current_user: Annotated[User, Depends(get_current_active_user)],
+    ) -> User:
+        role_name = current_user.role.name if current_user.role else None
+        if not has_permission(role_name, permission):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
+        return current_user
+
+    return permission_dependency
+
+
+async def get_tenant_context(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> TenantContext:
+    return TenantContext(
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        role=normalize_role(current_user.role.name if current_user.role else None),
+    )
 
 
 async def get_organization_id(
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> UUID | None:
     return current_user.organization_id
+
+
+def verify_same_organization(
+    target_organization_id: UUID | None,
+    current_user: User,
+) -> None:
+    role = normalize_role(current_user.role.name if current_user.role else None)
+    if role == RoleEnum.SUPER_ADMIN:
+        return
+    if current_user.organization_id is None or target_organization_id != current_user.organization_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organization mismatch")
+
+
+def verify_own_resource(
+    resource_user_id: UUID,
+    current_user_id: UUID,
+    current_user_role: RoleEnum | str | None = RoleEnum.USER,
+) -> None:
+    role = normalize_role(current_user_role)
+    if role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        return
+    if resource_user_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Resource access denied")
 
 
 def check_account_not_locked(user: User) -> None:

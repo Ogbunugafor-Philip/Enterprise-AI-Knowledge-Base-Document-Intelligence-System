@@ -10,12 +10,17 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.departments import router as departments_router
+from app.api.v1.roles import router as roles_router
 from app.api.v1.setup import router as setup_router
+from app.core.data_isolation import IsolationViolationError
 from app.middleware.auth_middleware import JWTAuthenticationMiddleware, PasswordExpiryMiddleware
+from app.middleware.rbac_middleware import RBACMiddleware
 
 logger = logging.getLogger("ent_rag")
 
@@ -65,11 +70,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(PasswordExpiryMiddleware)
+app.add_middleware(RBACMiddleware)
 app.add_middleware(JWTAuthenticationMiddleware)
 
 app.include_router(api_router)
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(setup_router, prefix="/api/v1")
+app.include_router(roles_router, prefix="/api/v1")
+app.include_router(departments_router, prefix="/api/v1")
+
+
+@app.exception_handler(IsolationViolationError)
+async def isolation_violation_handler(request: Request, exc: IsolationViolationError) -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": exc.message})
+
+
+@app.exception_handler(PermissionError)
+async def permission_denied_handler(request: Request, exc: PermissionError) -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": str(exc) or "Permission denied"})
 
 
 @app.get("/", tags=["root"])
