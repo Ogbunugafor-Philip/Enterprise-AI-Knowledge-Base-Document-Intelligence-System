@@ -5,12 +5,28 @@ from email.message import EmailMessage
 from app.core.config import settings
 
 
-def _build_html_email(title: str, body: str, action_text: str | None = None) -> str:
-    action_html = (
-        f"<div style='margin-top:24px;font-size:24px;font-weight:700;letter-spacing:4px'>{action_text}</div>"
-        if action_text
-        else ""
-    )
+def _build_html_email(
+    title: str,
+    body: str,
+    action_text: str | None = None,
+    action_url: str | None = None,
+) -> str:
+    if action_url and action_text:
+        action_html = (
+            f"<div style='margin-top:24px;'>"
+            f"<a href='{action_url}' style='display:inline-block;background:#2563eb;color:#ffffff;"
+            f"text-decoration:none;padding:12px 28px;border-radius:6px;font-size:14px;"
+            f"font-weight:600;'>{action_text}</a>"
+            f"<p style='margin-top:16px;font-size:12px;color:#94a3b8;word-break:break-all;'>"
+            f"Or copy this link: {action_url}</p>"
+            f"</div>"
+        )
+    elif action_text:
+        action_html = (
+            f"<div style='margin-top:24px;font-size:24px;font-weight:700;letter-spacing:4px'>{action_text}</div>"
+        )
+    else:
+        action_html = ""
     return f"""
     <html>
       <body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;">
@@ -18,7 +34,7 @@ def _build_html_email(title: str, body: str, action_text: str | None = None) -> 
           <tr>
             <td align="center">
               <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:32px;">
-                <tr><td style="font-size:20px;font-weight:700;">Ent_RAG</td></tr>
+                <tr><td style="font-size:20px;font-weight:700;color:#2563eb;">DocIntel</td></tr>
                 <tr><td style="padding-top:24px;font-size:18px;font-weight:700;">{title}</td></tr>
                 <tr><td style="padding-top:12px;font-size:14px;line-height:22px;color:#475569;">{body}</td></tr>
                 <tr><td>{action_html}</td></tr>
@@ -52,29 +68,31 @@ async def send_email(to_email: str, subject: str, html_body: str) -> None:
 
 async def send_otp_verification_email(to_email: str, otp_code: str) -> None:
     html = _build_html_email(
-        "Verify your account",
-        "Use this one-time code to complete your Ent_RAG account verification. The code expires in 10 minutes.",
+        "Verify your DocIntel account",
+        "Use this one-time code to complete your account verification. The code expires in 10 minutes.",
         otp_code,
     )
-    await send_email(to_email, "Ent_RAG account verification code", html)
+    await send_email(to_email, "DocIntel — account verification code", html)
 
 
 async def send_temporary_password_email(to_email: str, temporary_password: str) -> None:
     html = _build_html_email(
-        "Temporary password issued",
+        "Your DocIntel temporary password",
         "A temporary password has been generated for your account. Sign in and change it immediately.",
         temporary_password,
     )
-    await send_email(to_email, "Ent_RAG temporary password", html)
+    await send_email(to_email, "DocIntel — temporary password", html)
 
 
 async def send_password_reset_email(to_email: str, reset_token: str) -> None:
+    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
     html = _build_html_email(
-        "Password reset requested",
-        "Use this secure reset token to set a new password. The token expires in 10 minutes.",
-        reset_token,
+        "Reset your DocIntel password",
+        "Click the button below to set a new password. This link expires in 30 minutes and can only be used once.",
+        "Reset Password",
+        reset_url,
     )
-    await send_email(to_email, "Ent_RAG password reset", html)
+    await send_email(to_email, "DocIntel — password reset link", html)
 
 
 async def send_account_locked_email(to_email: str) -> None:
