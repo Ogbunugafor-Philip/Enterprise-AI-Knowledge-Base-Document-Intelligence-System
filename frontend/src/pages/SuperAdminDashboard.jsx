@@ -44,9 +44,9 @@ export default function SuperAdminDashboard() {
         <StatsCard title="Active Users" value={loading ? '…' : (s.active_users ?? 0)} icon={UserCheck} color="green" />
         <StatsCard title="Inactive Users" value={loading ? '…' : (s.inactive_users ?? 0)} icon={UserX} color="yellow" />
         <StatsCard title="Unverified" value={loading ? '…' : (s.unverified_users ?? 0)} icon={Mail} color="yellow" />
-        <StatsCard title="Locked Accounts" value={loading ? '…' : (s.locked_users ?? 0)} icon={Lock} color="red" />
-        <StatsCard title="Created Today" value={loading ? '…' : (s.created_today ?? 0)} icon={Plus} color="green" />
-        <StatsCard title="Created This Month" value={loading ? '…' : (s.created_this_month ?? 0)} icon={Users} color="purple" />
+        <StatsCard title="Locked Accounts" value={loading ? '…' : (s.locked_accounts ?? 0)} icon={Lock} color="red" />
+        <StatsCard title="Created Today" value={loading ? '…' : (s.users_created_today ?? 0)} icon={Plus} color="green" />
+        <StatsCard title="Created This Month" value={loading ? '…' : (s.users_created_this_month ?? 0)} icon={Users} color="purple" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -81,7 +81,7 @@ export default function SuperAdminDashboard() {
                 <Lock className="w-4 h-4 text-red-600" />
                 <span className="text-sm font-medium text-red-700">Locked Accounts</span>
               </div>
-              <span className="text-lg font-bold text-red-700">{loading ? '…' : (s.locked_users ?? 0)}</span>
+              <span className="text-lg font-bold text-red-700">{loading ? '…' : (s.locked_accounts ?? 0)}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
               <div className="flex items-center gap-2">

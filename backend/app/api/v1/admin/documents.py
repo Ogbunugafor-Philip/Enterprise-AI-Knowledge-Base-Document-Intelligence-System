@@ -206,26 +206,62 @@ async def dashboard_stats(
     current_user: Annotated[User, Depends(get_current_active_user)],
     redis=Depends(get_redis_client),
 ):
-    cache_key = make_cache_key("admin_dashboard_stats", str(current_user.organization_id))
-    if redis:
-        cached = await CacheManager(redis).get_cached_response(cache_key)
-        if cached:
-            return AdminDashboardStats(**cached)
+    # No caching — always return live counts
+    org_id = current_user.organization_id
+    base = Document.organization_id == org_id
 
-    result = await db.execute(select(Document).where(Document.organization_id == current_user.organization_id).order_by(Document.created_at.desc()).limit(5))
-    recent = list(result.scalars().all())
-    count_result = await db.execute(select(func.count()).select_from(Document).where(Document.organization_id == current_user.organization_id))
-    total = int(count_result.scalar_one())
+    # Proper aggregate queries across ALL documents, not just the last 5
+    total_approved = int((await db.execute(
+        select(func.count()).select_from(Document)
+        .where(base, Document.status == "approved", Document.is_approved.is_(True))
+    )).scalar_one())
+
+    pending = int((await db.execute(
+        select(func.count()).select_from(Document)
+        .where(base, Document.status == "reviewed")
+    )).scalar_one())
+
+    failed = int((await db.execute(
+        select(func.count()).select_from(Document)
+        .where(base, Document.status == "failed")
+    )).scalar_one())
+
+    total_chunks = int((await db.execute(
+        select(func.coalesce(func.sum(Document.chunk_count), 0)).select_from(Document)
+        .where(base, Document.status == "approved")
+    )).scalar_one())
+
+    # Status breakdown across all non-deleted documents
+    status_rows = (await db.execute(
+        select(Document.status, func.count()).select_from(Document)
+        .where(base, Document.status.not_in(["deleted"]))
+        .group_by(Document.status)
+    )).all()
+    documents_by_status = {row[0]: row[1] for row in status_rows}
+
+    # File type breakdown across approved documents
+    type_rows = (await db.execute(
+        select(Document.file_type, func.count()).select_from(Document)
+        .where(base, Document.status == "approved")
+        .group_by(Document.file_type)
+    )).all()
+    documents_by_type = {row[0]: row[1] for row in type_rows}
+
+    # Recent uploads (last 5, any non-deleted status for visibility)
+    recent_result = await db.execute(
+        select(Document).where(base, Document.status.not_in(["deleted"]))
+        .order_by(Document.created_at.desc()).limit(5)
+    )
+    recent = list(recent_result.scalars().all())
+
     stats = AdminDashboardStats(
-        total_documents=total,
-        pending_approval=sum(1 for doc in recent if doc.status == "reviewed"),
-        approved_documents=sum(1 for doc in recent if doc.status == "approved"),
-        failed_uploads=sum(1 for doc in recent if doc.status == "failed"),
-        total_chunks=sum(doc.chunk_count for doc in recent),
-        documents_by_status={status: sum(1 for doc in recent if doc.status == status) for status in {doc.status for doc in recent}},
-        documents_by_type={file_type: sum(1 for doc in recent if doc.file_type == file_type) for file_type in {doc.file_type for doc in recent}},
+        total_documents=total_approved,
+        pending_approval=pending,
+        approved_documents=total_approved,
+        failed_uploads=failed,
+        total_chunks=total_chunks,
+        documents_by_status=documents_by_status,
+        documents_by_type=documents_by_type,
         recent_uploads=[_doc_response(doc) for doc in recent],
     )
-    if redis:
-        await CacheManager(redis).cache_response(cache_key, stats.model_dump(), TTL_DASHBOARD_STATS)
     return stats

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # TTL presets (seconds)
 # ---------------------------------------------------------------------------
 
-TTL_DASHBOARD_STATS: int = 60
+TTL_DASHBOARD_STATS: int = 10
 TTL_DOCUMENT_LIST: int = 30
 TTL_USER_PROFILE: int = 300
 TTL_SAMPLE_QUESTIONS: int = 3600

@@ -398,7 +398,7 @@ async def get_user_list(
     page: int = 1,
     page_size: int = 20,
 ) -> UserListResponse:
-    filters = []
+    filters = [User.email.not_like("ANONYMIZED_USER_%")]
     if organization_id is not None:
         filters.append(User.organization_id == organization_id)
     if department_id is not None:
@@ -463,7 +463,10 @@ async def get_superadmin_dashboard_stats(
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    user_base = select(func.count()).select_from(User)
+    # Exclude anonymized/soft-deleted users from every count
+    _real = User.email.not_like("ANONYMIZED_USER_%")
+
+    user_base = select(func.count()).select_from(User).where(User.is_active.is_(True), _real)
     if organization_id:
         user_base = user_base.where(User.organization_id == organization_id)
 
@@ -474,14 +477,19 @@ async def get_superadmin_dashboard_stats(
     )
     total_users = await db.scalar(user_base) or 0
 
-    active_q = select(func.count()).select_from(User).where(User.is_active.is_(True))
-    inactive_q = select(func.count()).select_from(User).where(User.is_active.is_(False))
-    unverified_q = select(func.count()).select_from(User).where(User.is_verified.is_(False))
-    locked_q = select(func.count()).select_from(User).where(
-        User.locked_until.isnot(None), User.locked_until > now
+    # active: is_active + not anonymized
+    active_q = select(func.count()).select_from(User).where(User.is_active.is_(True), _real)
+    # inactive: real deactivated users only (not anonymized soft-deletes)
+    inactive_q = select(func.count()).select_from(User).where(User.is_active.is_(False), _real)
+    # unverified: only active real users awaiting email verification
+    unverified_q = select(func.count()).select_from(User).where(
+        User.is_active.is_(True), User.is_verified.is_(False), _real
     )
-    today_q = select(func.count()).select_from(User).where(User.created_at >= today_start)
-    month_q = select(func.count()).select_from(User).where(User.created_at >= month_start)
+    locked_q = select(func.count()).select_from(User).where(
+        User.locked_until.isnot(None), User.locked_until > now, _real
+    )
+    today_q = select(func.count()).select_from(User).where(User.created_at >= today_start, _real)
+    month_q = select(func.count()).select_from(User).where(User.created_at >= month_start, _real)
     dept_q = select(func.count()).select_from(Department)
 
     if organization_id:
