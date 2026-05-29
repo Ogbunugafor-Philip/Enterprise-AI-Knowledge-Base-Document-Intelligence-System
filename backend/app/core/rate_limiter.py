@@ -107,7 +107,23 @@ class RateLimiter:
         return removed
 
 
-rate_limiter = RateLimiter()
+def _make_redis_client():
+    try:
+        import redis as sync_redis
+        import os
+        client = sync_redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379"),
+            decode_responses=True,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        client.ping()
+        return client
+    except Exception:
+        return None
+
+
+rate_limiter = RateLimiter(redis_client=_make_redis_client())
 
 
 def rate_limit_response(result: RateLimitResult) -> JSONResponse:

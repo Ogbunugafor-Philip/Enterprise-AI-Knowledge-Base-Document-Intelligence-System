@@ -74,11 +74,15 @@ async def lifespan(app: FastAPI):
     logger.info("Stopping Ent_RAG API")
 
 
+_is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
 app = FastAPI(
     title="Ent_RAG API",
     description="Enterprise AI Knowledge Base and Document Intelligence System",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
 )
 
 app.add_middleware(
