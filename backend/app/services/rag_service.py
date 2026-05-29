@@ -21,7 +21,9 @@ def build_rag_prompt(
         "'I cannot find this information in the approved documents.' "
         "Always cite the source document for every claim you make. "
         "Be concise, professional, and factually accurate. "
-        "Do not speculate, invent facts, or guess at answers."
+        "Do not speculate, invent facts, or guess at answers. "
+        "Format your response cleanly: use numbered lists or plain paragraphs. "
+        "Avoid using ** for bold or excessive asterisks in your response."
     )
 
     if not formatted_context:

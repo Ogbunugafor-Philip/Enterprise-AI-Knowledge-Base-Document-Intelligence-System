@@ -1,9 +1,23 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { MessageSquarePlus, Send, ThumbsUp, ThumbsDown, AlertTriangle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import AppLayout from '../components/Layout/AppLayout.jsx';
 import { chatApi } from '../services/chatApi.js';
 import { formatDistanceToNow } from 'date-fns';
+
+const mdComponents = {
+  p:      ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+  em:     ({ children }) => <em className="italic">{children}</em>,
+  ul:     ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
+  ol:     ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
+  li:     ({ children }) => <li className="leading-relaxed">{children}</li>,
+  h1:     ({ children }) => <h1 className="text-base font-bold mb-1 mt-2">{children}</h1>,
+  h2:     ({ children }) => <h2 className="text-sm font-bold mb-1 mt-2">{children}</h2>,
+  h3:     ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-1">{children}</h3>,
+  code:   ({ children }) => <code className="bg-gray-100 rounded px-1 py-0.5 text-xs font-mono">{children}</code>,
+};
 
 function ConfidenceBar({ score }) {
   const pct = Math.round((score || 0) * 100);
@@ -38,7 +52,9 @@ function ChatMessage({ msg, onFeedback }) {
               <p className="text-sm text-amber-800">Source evidence was not strong enough to provide a confident answer.</p>
             </div>
           )}
-          <p className="text-sm text-gray-800 leading-relaxed mb-3">{msg.content || msg.answer}</p>
+          <div className="text-sm text-gray-800 mb-3">
+            <ReactMarkdown components={mdComponents}>{msg.content || msg.answer}</ReactMarkdown>
+          </div>
 
           {msg.confidence_score !== undefined && (
             <div className="mb-3 space-y-1.5">
