@@ -1,18 +1,37 @@
 import asyncio
+import logging
+import os
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
-from sqlalchemy import delete, select
+logger = logging.getLogger(__name__)
 
-from app.core.database import SessionLocal
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
+
 from app.models.document import Document, DocumentChunk
 from app.models.monitoring import MonitoringLog
 from app.services import chunking_service, document_processor_service, embedding_service, malware_scan_service
 from app.services.audit_service import log_action
 
 
+def _make_worker_session() -> async_sessionmaker:
+    """Create a per-invocation async session using NullPool.
+
+    The standard SessionLocal reuses connections across asyncio.run() calls,
+    which causes 'Future attached to a different loop' errors in Celery workers
+    (each task creates a fresh event loop). NullPool disables connection reuse.
+    """
+    from app.core.config import settings
+    engine = create_async_engine(settings.async_database_url, poolclass=NullPool)
+    return async_sessionmaker(bind=engine, class_=AsyncSession, autoflush=False, expire_on_commit=False)
+
+
 async def _process_document(document_id: str) -> None:
-    async with SessionLocal() as db:
+    async with _make_worker_session()() as db:
         result = await db.execute(select(Document).where(Document.id == UUID(document_id)))
         document = result.scalar_one_or_none()
         if document is None:
@@ -37,11 +56,13 @@ async def _process_document(document_id: str) -> None:
             embeddings = embedding_service.generate_embeddings_batch([chunk.chunk_text for chunk in saved_chunks])
             point_ids = embedding_service.store_embeddings_in_qdrant(None, document.organization_id, saved_chunks, embeddings, document)
             await embedding_service.update_chunk_qdrant_ids(db, saved_chunks, point_ids)
-            document.status = "reviewed"
+            document.status = "approved"
+            document.is_approved = True
+            document.approved_at = datetime.now(timezone.utc)
             document.embedding_status = "completed"
             document.chunk_count = len(saved_chunks)
             db.add(MonitoringLog(organization_id=document.organization_id, event_type="document_processed", service_name="worker", status_code=200))
-            await log_action(db, user_id=document.uploaded_by, organization_id=document.organization_id, action="DOCUMENT_PROCESSING_COMPLETED", resource_type="document", resource_id=str(document.id), new_value={"chunk_count": len(saved_chunks)})
+            await log_action(db, user_id=document.uploaded_by, organization_id=document.organization_id, action="DOCUMENT_PROCESSING_COMPLETED", resource_type="document", resource_id=str(document.id), new_value={"chunk_count": len(saved_chunks), "auto_approved": True})
             await db.commit()
         except Exception as exc:
             document.status = "failed"
@@ -57,7 +78,7 @@ def process_document_task(document_id: str) -> None:
 
 
 async def _reprocess_document(document_id: str) -> None:
-    async with SessionLocal() as db:
+    async with _make_worker_session()() as db:
         result = await db.execute(select(Document).where(Document.id == UUID(document_id)))
         document = result.scalar_one_or_none()
         if document is not None:

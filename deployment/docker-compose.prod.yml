@@ -161,6 +161,7 @@ services:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
       QDRANT_HOST: qdrant
+      PYTHONPATH: /app
     volumes:
       - ../uploads:/app/uploads
       - ../backups:/app/backups
@@ -197,6 +198,7 @@ services:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
       QDRANT_HOST: qdrant
+      PYTHONPATH: /app
     networks:
       - ent_rag_network
     depends_on:

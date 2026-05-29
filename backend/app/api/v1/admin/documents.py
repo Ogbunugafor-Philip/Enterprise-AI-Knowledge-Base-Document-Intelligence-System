@@ -26,6 +26,9 @@ from app.schemas.document import (
 )
 from app.services.file_validation_service import run_all_validations
 
+import logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/admin/documents", tags=["admin-documents"])
 dashboard_router = APIRouter(prefix="/admin/dashboard", tags=["admin-dashboard"])
 
@@ -94,10 +97,10 @@ async def upload_document(
     await db.commit()
     try:
         from worker.tasks.document_tasks import process_document_task
-
         process_document_task.delay(str(document.id))
-    except Exception:
-        pass
+        logger.info("Queued process_document_task for document %s", document.id)
+    except Exception as exc:
+        logger.error("Failed to queue process_document_task for document %s: %s", document.id, exc, exc_info=True)
     return DocumentUploadResponse(
         id=document.id,
         title=document.title,
@@ -172,10 +175,10 @@ async def reprocess_document(document_id: UUID, db: Annotated[AsyncSession, Depe
         raise HTTPException(status_code=404, detail="Document not found")
     try:
         from worker.tasks.document_tasks import reprocess_document_task
-
         reprocess_document_task.delay(str(document.id))
-    except Exception:
-        pass
+        logger.info("Queued reprocess_document_task for document %s", document.id)
+    except Exception as exc:
+        logger.error("Failed to queue reprocess_document_task for document %s: %s", document.id, exc, exc_info=True)
     return {"message": "Reprocessing queued"}
 
 
@@ -191,10 +194,9 @@ async def delete_document(document_id: UUID, db: Annotated[AsyncSession, Depends
     await db.commit()
     try:
         from worker.tasks.document_tasks import delete_document_embeddings_task
-
         delete_document_embeddings_task.delay(str(document.organization_id), str(document.id))
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.error("Failed to queue delete_document_embeddings_task for document %s: %s", document.id, exc, exc_info=True)
     return {"message": "Document deleted"}
 
 
