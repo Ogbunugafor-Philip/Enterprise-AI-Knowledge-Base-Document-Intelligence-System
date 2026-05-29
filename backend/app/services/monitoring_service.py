@@ -170,18 +170,16 @@ async def get_system_metrics(
             q = q.where(extra_filter)
         return int((await db.scalar(q)) or 0)
 
-    total_api = await count(MonitoringLog.event_type == "api_request")
-    failed_api = await count(
-        and_(MonitoringLog.event_type == "api_request", MonitoringLog.status_code >= 400)
-    )
-    avg_rt = await avg_val(
-        MonitoringLog.response_time_ms, MonitoringLog.event_type == "api_request"
-    )
+    # api_request = written by MonitoringMiddleware; access_attempt = written by RBACMiddleware
+    _api_types = MonitoringLog.event_type.in_(["api_request", "access_attempt"])
+    total_api = await count(_api_types)
+    failed_api = await count(and_(_api_types, MonitoringLog.status_code >= 400))
+    avg_rt = await avg_val(MonitoringLog.response_time_ms, _api_types)
     total_ai = await count(MonitoringLog.event_type == "ai_query")
     failed_ai = await count(
         and_(MonitoringLog.event_type == "ai_query", MonitoringLog.status_code >= 400)
     )
-    total_doc = await count(MonitoringLog.event_type == "document_upload")
+    total_doc = await count(MonitoringLog.event_type == "document_processed")
     failed_doc = await count(MonitoringLog.event_type == "document_processing_failed")
     login_total = await count(MonitoringLog.event_type.in_(["login_success", "login_failed"]))
     login_failed = await count(MonitoringLog.event_type == "login_failed")

@@ -19,6 +19,7 @@ from app.core.security import (
 from app.core.encryption import hash_sensitive_data
 from app.core.email import send_otp_verification_email
 from app.models.audit import AuditLog
+from app.services.monitoring_service import track_auth_event
 from app.models.auth import OTPVerification, PasswordHistory
 from app.models.organization import Organization
 from app.models.user import User
@@ -79,6 +80,12 @@ async def handle_failed_login(db: AsyncSession, user: User) -> None:
         action="LOGIN_FAILED",
         resource_type="auth",
         status_value="failed",
+    )
+    await track_auth_event(
+        db,
+        organization_id=user.organization_id,
+        user_id=user.id,
+        event_type="login_failed",
     )
 
 
@@ -153,6 +160,12 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> tupl
         user_id=user.id,
         action="LOGIN_SUCCESS",
         resource_type="auth",
+    )
+    await track_auth_event(
+        db,
+        organization_id=user.organization_id,
+        user_id=user.id,
+        event_type="login_success",
     )
     await db.commit()
     await db.refresh(user)

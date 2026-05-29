@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, AlertTriangle, Clock, Users, Zap, TrendingUp } from 'lucide-react';
+import { Activity, AlertTriangle, Clock, Users, Zap } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area,
@@ -26,20 +26,29 @@ function timeAgo(ts) {
   return `${Math.floor(diff / 3600)}h ago`;
 }
 
+function fmtHour(ts) {
+  if (!ts) return '';
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  catch { return ts; }
+}
+
 export default function MonitoringDashboard() {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState(null);
+  const [aiQualData, setAiQualData] = useState({});
   const [alerts, setAlerts] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [dashRes, alertRes] = await Promise.all([
+    const [dashRes, alertRes, aiQualRes] = await Promise.all([
       monitoringApi.getDashboard(),
       monitoringApi.getAlerts(),
+      monitoringApi.getAIQuality(),
     ]);
     if (dashRes.ok) setDashboard(dashRes.data);
     if (alertRes.ok) setAlerts((alertRes.data?.alerts || alertRes.data || []).slice(0, 5));
+    if (aiQualRes.ok) setAiQualData(aiQualRes.data || {});
     setLastUpdated(new Date());
     setLoading(false);
   }, []);
@@ -51,10 +60,13 @@ export default function MonitoringDashboard() {
   }, [load]);
 
   const d = dashboard || {};
-  const metrics = d.metrics || {};
-  const aiQuality = d.ai_quality || {};
+  const metrics = d.system_metrics || {};
   const responseTimeTrend = d.response_time_trend || [];
-  const errorRateTrend = d.error_rate_trend || [];
+  const errorTrend = d.error_trend || [];
+
+  const rejectionRate = aiQualData.total_queries > 0
+    ? aiQualData.total_rejected / aiQualData.total_queries
+    : 0;
 
   return (
     <AppLayout
@@ -67,11 +79,11 @@ export default function MonitoringDashboard() {
       }
     >
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <StatsCard title="Active Users" value={loading ? '…' : (metrics.active_users ?? 0)} icon={Users} color="blue" />
-        <StatsCard title="Total API Calls" value={loading ? '…' : (metrics.total_api_calls ?? 0)} icon={Activity} color="indigo" />
-        <StatsCard title="Error Rate %" value={loading ? '…' : `${(metrics.error_rate ?? 0).toFixed(1)}%`} icon={AlertTriangle} color="red" />
-        <StatsCard title="Avg Response ms" value={loading ? '…' : `${Math.round(metrics.avg_response_time_ms ?? 0)}`} icon={Clock} color="yellow" />
-        <StatsCard title="AI Queries" value={loading ? '…' : (metrics.ai_queries ?? 0)} icon={Zap} color="purple" />
+        <StatsCard title="Active Users"    value={loading ? '…' : (metrics.active_users ?? 0)}                                  icon={Users}          color="blue"   />
+        <StatsCard title="Total API Calls" value={loading ? '…' : (metrics.total_api_calls ?? 0)}                               icon={Activity}       color="indigo" />
+        <StatsCard title="Error Rate %"    value={loading ? '…' : `${(metrics.error_rate_percent ?? 0).toFixed(1)}%`}           icon={AlertTriangle}  color="red"    />
+        <StatsCard title="Avg Response ms" value={loading ? '…' : `${Math.round(metrics.avg_response_time_ms ?? 0)}`}           icon={Clock}          color="yellow" />
+        <StatsCard title="AI Queries"      value={loading ? '…' : (metrics.total_ai_queries ?? 0)}                              icon={Zap}            color="purple" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -83,27 +95,27 @@ export default function MonitoringDashboard() {
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={responseTimeTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="timestamp" tick={{ fontSize: 11 }} tickFormatter={fmtHour} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={v => [`${v} ms`, 'Response Time']} />
-                <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                <Tooltip labelFormatter={fmtHour} formatter={v => [`${v} ms`, 'Response Time']} />
+                <Line type="monotone" dataKey="avg_response_time_ms" stroke="#3b82f6" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
 
         <div className="card p-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">Error Rate (24h)</h2>
-          {errorRateTrend.length === 0 ? (
+          <h2 className="text-base font-semibold text-gray-900 mb-4">Errors (24h)</h2>
+          {errorTrend.length === 0 ? (
             <div className="h-48 flex items-center justify-center text-gray-400 text-sm">No data available</div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={errorRateTrend}>
+              <AreaChart data={errorTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="timestamp" tick={{ fontSize: 11 }} tickFormatter={fmtHour} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={v => [`${v}%`, 'Error Rate']} />
-                <Area type="monotone" dataKey="value" stroke="#ef4444" fill="#fee2e2" strokeWidth={2} />
+                <Tooltip labelFormatter={fmtHour} formatter={v => [`${v}`, 'Errors']} />
+                <Area type="monotone" dataKey="error_count" stroke="#ef4444" fill="#fee2e2" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -117,24 +129,28 @@ export default function MonitoringDashboard() {
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span className="font-medium text-gray-700">Avg Confidence Score</span>
-                <span className="text-gray-900 font-semibold">{((aiQuality.avg_confidence ?? 0) * 100).toFixed(0)}%</span>
+                <span className="text-gray-900 font-semibold">{((aiQualData.avg_retrieval_confidence ?? 0) * 100).toFixed(0)}%</span>
               </div>
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full bg-green-500 rounded-full" style={{ width: `${(aiQuality.avg_confidence ?? 0) * 100}%` }} />
+                <div className="h-full bg-green-500 rounded-full" style={{ width: `${(aiQualData.avg_retrieval_confidence ?? 0) * 100}%` }} />
               </div>
             </div>
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span className="font-medium text-gray-700">Hallucination Risk</span>
-                <span className="text-gray-900 font-semibold">{((aiQuality.hallucination_risk ?? 0) * 100).toFixed(0)}%</span>
+                <span className="text-gray-900 font-semibold">{((aiQualData.avg_hallucination_risk ?? 0) * 100).toFixed(0)}%</span>
               </div>
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full bg-red-500 rounded-full" style={{ width: `${(aiQuality.hallucination_risk ?? 0) * 100}%` }} />
+                <div className="h-full bg-red-500 rounded-full" style={{ width: `${(aiQualData.avg_hallucination_risk ?? 0) * 100}%` }} />
               </div>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <span className="text-sm font-medium text-gray-700">Rejection Rate</span>
-              <span className="text-sm font-bold text-gray-900">{((aiQuality.rejection_rate ?? 0) * 100).toFixed(1)}%</span>
+              <span className="text-sm font-bold text-gray-900">{(rejectionRate * 100).toFixed(1)}%</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm font-medium text-gray-700">Total Queries</span>
+              <span className="text-sm font-bold text-gray-900">{aiQualData.total_queries ?? 0}</span>
             </div>
           </div>
         </div>
