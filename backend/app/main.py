@@ -91,10 +91,12 @@ app.add_middleware(
 )
 
 # Starlette applies middleware in reverse registration order.
-app.add_middleware(JWTAuthenticationMiddleware)
-app.add_middleware(RBACMiddleware)
-app.add_middleware(PasswordExpiryMiddleware)
+# Desired execution: Security → RateLimit → SQLInjection → RequestValidation → JWT → RBAC → PasswordExpiry → Monitoring
+# So register innermost (last-to-run) first and outermost (first-to-run) last.
 app.add_middleware(MonitoringMiddleware)
+app.add_middleware(PasswordExpiryMiddleware)
+app.add_middleware(RBACMiddleware)
+app.add_middleware(JWTAuthenticationMiddleware)
 app.add_middleware(RequestValidationMiddleware)
 app.add_middleware(SQLInjectionProtectionMiddleware)
 app.add_middleware(RateLimitMiddleware)

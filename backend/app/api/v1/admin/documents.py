@@ -133,7 +133,7 @@ async def list_documents(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
 ) -> DocumentListResponse:
-    filters = [Document.organization_id == current_user.organization_id]
+    filters = [Document.organization_id == current_user.organization_id, Document.status != "deleted"]
     if status_filter:
         filters.append(Document.status == status_filter)
     if file_type:
@@ -149,7 +149,7 @@ async def list_documents(
 
 @router.get("/{document_id}", response_model=DocumentResponse, dependencies=[Depends(require_role([RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN]))])
 async def get_document(document_id: UUID, db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_active_user)]):
-    result = await db.execute(select(Document).where(Document.id == document_id, Document.organization_id == current_user.organization_id))
+    result = await db.execute(select(Document).where(Document.id == document_id, Document.organization_id == current_user.organization_id, Document.status != "deleted"))
     document = result.scalar_one_or_none()
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -158,7 +158,7 @@ async def get_document(document_id: UUID, db: Annotated[AsyncSession, Depends(ge
 
 @router.get("/{document_id}/status", response_model=IngestionStatusResponse, dependencies=[Depends(require_role([RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN]))])
 async def document_status(document_id: UUID, db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_active_user)]):
-    result = await db.execute(select(Document).where(Document.id == document_id, Document.organization_id == current_user.organization_id))
+    result = await db.execute(select(Document).where(Document.id == document_id, Document.organization_id == current_user.organization_id, Document.status != "deleted"))
     document = result.scalar_one_or_none()
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
