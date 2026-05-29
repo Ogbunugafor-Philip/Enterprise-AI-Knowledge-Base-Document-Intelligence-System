@@ -104,13 +104,17 @@ def rerank_chunks(chunks: list[ScoredChunk], top_k: int = TOP_K_CHUNKS) -> list[
     if not chunks:
         return []
 
-    seen_doc_sections: set[tuple[str, int]] = set()
+    # Deduplicate by exact (document_id, chunk_index) pair so the same chunk
+    # is never returned twice, but all distinct chunks are allowed through.
+    # Positional-window deduplication (the old // 3 approach) was discarding
+    # valid, distinct chunks from small documents.
+    seen: set[tuple[str, int]] = set()
     deduplicated: list[ScoredChunk] = []
 
     for chunk in sorted(chunks, key=lambda c: c.relevance_score, reverse=True):
-        section_key = (chunk.document_id, chunk.chunk_index // 3)
-        if section_key not in seen_doc_sections:
-            seen_doc_sections.add(section_key)
+        key = (chunk.document_id, chunk.chunk_index)
+        if key not in seen:
+            seen.add(key)
             deduplicated.append(chunk)
 
     return deduplicated[:top_k]

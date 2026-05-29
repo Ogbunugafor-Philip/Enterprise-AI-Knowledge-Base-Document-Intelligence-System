@@ -12,12 +12,19 @@ def calculate_chunk_hash(chunk_text: str) -> str:
     return hashlib.sha256(chunk_text.encode("utf-8")).hexdigest()
 
 
+def clean_chunk_text(text: str) -> str:
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = "\n".join(line.rstrip() for line in text.split("\n"))
+    return text.strip()
+
+
 def _sentences(text: str) -> list[str]:
     parts = re.split(r"(?<=[.!?])\s+", text.strip())
     return [part.strip() for part in parts if part.strip()]
 
 
-def semantic_chunk(text: str, target_min: int = 300, target_max: int = 500, overlap_tokens: int = 50) -> list[dict]:
+def semantic_chunk(text: str, target_min: int = 200, target_max: int = 400, overlap_tokens: int = 100) -> list[dict]:
     sentences = _sentences(text)
     chunks: list[dict] = []
     current: list[str] = []
@@ -58,8 +65,9 @@ def hybrid_chunk(structured_text: dict | str) -> list[dict]:
         structured_text = {"sections": [{"heading": "Document", "paragraphs": [structured_text]}]}
     output = []
     for section in structured_text.get("sections", []):
-        section_text = "\n".join(section.get("paragraphs", []))
+        section_text = clean_chunk_text("\n".join(section.get("paragraphs", [])))
         for chunk in semantic_chunk(section_text):
+            chunk["chunk_text"] = clean_chunk_text(chunk["chunk_text"])
             chunk["heading"] = section.get("heading")
             chunk["chunk_hash"] = calculate_chunk_hash(chunk["chunk_text"])
             output.append(chunk)

@@ -22,6 +22,9 @@ def build_rag_prompt(
         "Always cite the source document for every claim you make. "
         "Be concise, professional, and factually accurate. "
         "Do not speculate, invent facts, or guess at answers. "
+        "If the context contains relevant information, always provide a complete, thorough answer — do not be conservative. "
+        "Synthesize information across all provided chunks into a cohesive response. "
+        "Cite the source document title and section for every key claim. "
         "Format your response cleanly: use numbered lists or plain paragraphs. "
         "Avoid using ** for bold or excessive asterisks in your response."
     )
@@ -35,7 +38,9 @@ def build_rag_prompt(
         user_prompt = (
             f"Context from approved documents:\n\n{formatted_context}\n\n"
             f"Question: {user_question}\n\n"
-            "Answer based only on the context above. Cite source document titles."
+            "Answer thoroughly based only on the context above. "
+            "Synthesize all relevant information from every source chunk provided. "
+            "Cite specific source document titles and sections."
         )
 
     return system_prompt, user_prompt
@@ -99,9 +104,11 @@ def calculate_retrieval_confidence(chunks: list[ScoredChunk], top_k: int = rag_c
         return 0.0
     scores = [c.relevance_score for c in chunks]
     avg_score = sum(scores) / len(scores)
-    coverage = min(1.0, len(chunks) / max(1, top_k))
-    top_score_bonus = max(scores) * 0.1
-    confidence = avg_score * 0.6 + coverage * 0.3 + top_score_bonus
+    top_score = max(scores)
+    # Weight heavily on actual relevance — don't penalise coverage when the
+    # document corpus is small and all available chunks were retrieved.
+    multi_chunk_bonus = 0.05 if len(chunks) >= 3 else 0.0
+    confidence = avg_score * 0.7 + top_score * 0.3 + multi_chunk_bonus
     return max(0.0, min(1.0, confidence))
 
 
@@ -118,16 +125,13 @@ def calculate_response_confidence(
         1 for phrase in rag_config.UNCERTAINTY_PHRASES
         if phrase in answer.lower()
     )
-    uncertainty_penalty = min(0.3, uncertainty_hits * 0.1)
+    # Reduce penalty — a single hedging phrase shouldn't tank confidence much
+    uncertainty_penalty = min(0.15, uncertainty_hits * 0.05)
 
-    source_bonus = min(0.2, sources_cited * 0.05)
+    source_bonus = min(0.15, sources_cited * 0.05)
+    multi_source_bonus = 0.05 if sources_cited >= 2 else 0.0
 
-    context_words = len(context.split()) if context else 1
-    answer_words = len(answer.split())
-    length_ratio = min(1.0, answer_words / max(1, context_words * 0.5))
-    length_factor = 0.1 * length_ratio
-
-    confidence = retrieval_confidence * 0.7 + source_bonus + length_factor - uncertainty_penalty
+    confidence = retrieval_confidence * 0.8 + source_bonus + multi_source_bonus - uncertainty_penalty
     return max(0.0, min(1.0, confidence))
 
 
@@ -147,13 +151,15 @@ def calculate_hallucination_risk(
     numbers_in_answer = set(re.findall(r"\b\d{4,}\b", answer_lower))
     numbers_in_context = set(re.findall(r"\b\d{4,}\b", context_lower))
     unsupported_numbers = numbers_in_answer - numbers_in_context
-    number_risk = min(0.3, len(unsupported_numbers) * 0.1)
+    # Reduce per-number penalty — a few unsupported numbers is normal in good answers
+    number_risk = min(0.2, len(unsupported_numbers) * 0.05)
 
+    # Only flag length risk when answer is dramatically longer than context
     answer_words = len(answer.split())
     context_words = len(context.split()) if context else 0
-    length_risk = 0.2 if context_words > 0 and answer_words > context_words * 0.8 else 0.0
+    length_risk = 0.1 if context_words > 0 and answer_words > context_words * 1.5 else 0.0
 
-    total_risk = base_risk * 0.6 + number_risk + length_risk
+    total_risk = base_risk * 0.5 + number_risk + length_risk
     return max(0.0, min(1.0, total_risk))
 
 

@@ -85,7 +85,8 @@ async def _reprocess_document(document_id: str) -> None:
         document = result.scalar_one_or_none()
         if document is not None:
             await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
-            embedding_service.delete_document_embeddings(None, document.organization_id, document.id)
+            from app.services.vector_search_service import initialize_qdrant_client
+            embedding_service.delete_document_embeddings(initialize_qdrant_client(), document.organization_id, document.id)
             await log_action(db, user_id=document.uploaded_by, organization_id=document.organization_id, action="DOCUMENT_REPROCESSED", resource_type="document", resource_id=str(document.id))
             await db.commit()
     await _process_document(document_id)
