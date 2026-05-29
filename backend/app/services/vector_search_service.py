@@ -43,22 +43,23 @@ async def search_similar_chunks(
         else:
             query_vector = list(query_vector)
 
-        collection_name = f"ent_rag_{organization_id}"
+        from app.services.embedding_service import QDRANT_COLLECTION
+        collection_name = QDRANT_COLLECTION
 
         must_filters = [
             FieldCondition(key="organization_id", match=MatchValue(value=str(organization_id)))
         ]
 
-        results = client.search(
+        response = client.query_points(
             collection_name=collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=Filter(must=must_filters),
             limit=top_k * 2,
             with_payload=True,
         )
 
         chunks: list[ScoredChunk] = []
-        for hit in results:
+        for hit in response.points:
             payload = hit.payload or {}
             doc_id = payload.get("document_id", "")
             if accessible_ids and doc_id not in accessible_str:

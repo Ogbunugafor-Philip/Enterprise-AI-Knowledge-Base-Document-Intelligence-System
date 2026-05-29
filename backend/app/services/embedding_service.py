@@ -2,8 +2,8 @@ import uuid
 from functools import lru_cache
 import random
 
-
 VECTOR_SIZE = 384
+QDRANT_COLLECTION = "knowledge_base"
 
 
 class DeterministicEmbeddingModel:
@@ -42,26 +42,26 @@ def generate_embeddings_batch(chunks: list[str], batch_size: int = 32):
     return embeddings
 
 
-def create_qdrant_collection(client, collection_name: str) -> None:
+def ensure_qdrant_collection(client) -> None:
+    """Create the collection if it does not already exist."""
     try:
+        client.get_collection(QDRANT_COLLECTION)
+    except Exception:
         from qdrant_client.models import Distance, VectorParams  # type: ignore
-
-        client.recreate_collection(
-            collection_name=collection_name,
+        client.create_collection(
+            collection_name=QDRANT_COLLECTION,
             vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
         )
-    except Exception:
-        return None
 
 
 def store_embeddings_in_qdrant(client, organization_id, chunks, embeddings, document) -> list[str]:
-    collection_name = f"ent_rag_{organization_id}"
     point_ids = [str(uuid.uuid4()) for _ in chunks]
     if client is None:
         return point_ids
     try:
         from qdrant_client.models import PointStruct  # type: ignore
 
+        ensure_qdrant_collection(client)
         points = []
         for point_id, chunk, embedding in zip(point_ids, chunks, embeddings, strict=False):
             points.append(
@@ -79,7 +79,7 @@ def store_embeddings_in_qdrant(client, organization_id, chunks, embeddings, docu
                     },
                 )
             )
-        client.upsert(collection_name=collection_name, points=points)
+        client.upsert(collection_name=QDRANT_COLLECTION, points=points)
     except Exception:
         return point_ids
     return point_ids
@@ -96,7 +96,12 @@ def delete_document_embeddings(client, organization_id, document_id) -> None:
     if client is None:
         return None
     try:
-        collection_name = f"ent_rag_{organization_id}"
-        client.delete(collection_name=collection_name, points_selector={"document_id": str(document_id)})
+        from qdrant_client.models import Filter, FieldCondition, MatchValue  # type: ignore
+        client.delete(
+            collection_name=QDRANT_COLLECTION,
+            points_selector=Filter(
+                must=[FieldCondition(key="document_id", match=MatchValue(value=str(document_id)))]
+            ),
+        )
     except Exception:
         return None

@@ -54,7 +54,9 @@ async def _process_document(document_id: str) -> None:
             chunks = chunking_service.hybrid_chunk(structured)
             saved_chunks = await chunking_service.save_chunks_to_db(db, document, chunks)
             embeddings = embedding_service.generate_embeddings_batch([chunk.chunk_text for chunk in saved_chunks])
-            point_ids = embedding_service.store_embeddings_in_qdrant(None, document.organization_id, saved_chunks, embeddings, document)
+            from app.services.vector_search_service import initialize_qdrant_client
+            qdrant_client = initialize_qdrant_client()
+            point_ids = embedding_service.store_embeddings_in_qdrant(qdrant_client, document.organization_id, saved_chunks, embeddings, document)
             await embedding_service.update_chunk_qdrant_ids(db, saved_chunks, point_ids)
             document.status = "approved"
             document.is_approved = True
