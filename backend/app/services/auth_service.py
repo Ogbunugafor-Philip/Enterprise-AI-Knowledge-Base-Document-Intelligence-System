@@ -306,7 +306,7 @@ async def generate_password_reset_token(db: AsyncSession, user: User) -> str:
             otp_code=token_hash,
             otp_code_hash=token_hash,
             otp_type="password_reset",
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
         )
     )
     await db.flush()

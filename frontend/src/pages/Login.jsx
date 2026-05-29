@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { ShieldCheck, Mail, Lock, Eye, EyeOff, Loader2, FileText, Brain, Users, BarChart3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import API_BASE_URL from '../config/api.js';
@@ -22,6 +22,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname;
+  const successMessage = location.state?.message || '';
 
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
@@ -182,7 +183,7 @@ export default function Login() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="label m-0" htmlFor="password">Password</label>
-                    <a href="/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium">Forgot password?</a>
+                    <Link to="/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium">Forgot password?</Link>
                   </div>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -201,6 +202,10 @@ export default function Login() {
                     checked={remember} onChange={e => setRemember(e.target.checked)} />
                   <span className="text-sm text-gray-600">Remember me for 30 days</span>
                 </label>
+
+                {successMessage && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{successMessage}</div>
+                )}
 
                 {error && (
                   <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>

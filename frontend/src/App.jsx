@@ -7,6 +7,8 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 // Pages
 import Login from "./pages/Login.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import ResetPassword from "./pages/ResetPassword.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
 import UserDashboard from "./pages/UserDashboard.jsx";
 import ChatInterface from "./pages/ChatInterface.jsx";
@@ -63,6 +65,8 @@ function AppRoutes() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/change-password" element={<ChangePassword />} />
       <Route path="/unauthorized" element={<Unauthorized />} />
 
