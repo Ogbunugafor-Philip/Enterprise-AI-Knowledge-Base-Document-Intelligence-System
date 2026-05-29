@@ -26,6 +26,10 @@ def build_rag_prompt(
         "Synthesize information across all provided chunks into a cohesive response. "
         "Cite the source document title and section for every key claim. "
         "Format your response cleanly: use numbered lists or plain paragraphs. "
+        "When your answer contains structured data that is naturally tabular (e.g., comparison of features, "
+        "fee structures, schedules, lists with multiple attributes), format it as a proper markdown table "
+        "using | column | headers | syntax. Always include a header row followed by a separator row (|---|---|---). "
+        "Use plain paragraphs for everything else. "
         "Avoid using ** for bold or excessive asterisks in your response."
     )
 

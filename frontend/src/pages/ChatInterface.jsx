@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { MessageSquarePlus, Send, ThumbsUp, ThumbsDown, AlertTriangle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import AppLayout from '../components/Layout/AppLayout.jsx';
 import { chatApi } from '../services/chatApi.js';
 import { formatDistanceToNow } from 'date-fns';
@@ -17,6 +18,12 @@ const mdComponents = {
   h2:     ({ children }) => <h2 className="text-sm font-bold mb-1 mt-2">{children}</h2>,
   h3:     ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-1">{children}</h3>,
   code:   ({ children }) => <code className="bg-gray-100 rounded px-1 py-0.5 text-xs font-mono">{children}</code>,
+  table:  ({ children }) => <div className="overflow-x-auto my-3"><table className="w-full text-sm border-collapse">{children}</table></div>,
+  thead:  ({ children }) => <thead className="bg-blue-600 text-white">{children}</thead>,
+  tbody:  ({ children }) => <tbody>{children}</tbody>,
+  tr:     ({ children }) => <tr className="border-b border-gray-100 even:bg-slate-50 hover:bg-blue-50 transition-colors">{children}</tr>,
+  th:     ({ children }) => <th className="px-3 py-2 text-left font-semibold text-xs uppercase tracking-wide whitespace-nowrap">{children}</th>,
+  td:     ({ children }) => <td className="px-3 py-2 text-gray-700 align-top">{children}</td>,
 };
 
 function ConfidenceBar({ score }) {
@@ -53,7 +60,7 @@ function ChatMessage({ msg, onFeedback }) {
             </div>
           )}
           <div className="text-sm text-gray-800 mb-3">
-            <ReactMarkdown components={mdComponents}>{msg.content || msg.answer}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content || msg.answer}</ReactMarkdown>
           </div>
 
           {msg.confidence_score !== undefined && (
